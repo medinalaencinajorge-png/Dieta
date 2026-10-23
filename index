@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Menú semanal por hidratos</title>
+<style>
+:root{
+  --field:#EAF0EC; --panel:#FFFFFF; --ink:#16302B; --muted:#5B706A; --line:#D3DED8;
+  --carb:#2B59C3; --carb-soft:#DCE6FA; --ok:#2E7D55; --warn:#B4531A;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --field:#101A17; --panel:#17251F; --ink:#E6F0EB; --muted:#93A8A0; --line:#2B3D36;
+    --carb:#7BA3FF; --carb-soft:#1F3157; --ok:#5CC38A; --warn:#F0955B;
+  }
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--field);color:var(--ink);font:16px/1.45 "Avenir Next","Segoe UI",system-ui,sans-serif;font-variant-numeric:tabular-nums}
+#app{max-width:760px;margin:0 auto;padding:20px 16px 48px}
+h1{font-size:1.65rem;margin:0;letter-spacing:-.01em}
+h2{font-size:1.1rem;margin:0 0 4px}
+.sub{color:var(--muted);margin:2px 0 0}
+header{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+nav{display:flex;gap:2px;border-bottom:1px solid var(--line);margin-bottom:16px;overflow-x:auto}
+nav button{background:none;border:0;padding:10px 14px;font:inherit;color:var(--muted);cursor:pointer;border-bottom:3px solid transparent;margin-bottom:-1px;white-space:nowrap}
+nav button.on{color:var(--ink);border-bottom-color:var(--carb);font-weight:650}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid var(--carb);outline-offset:2px}
+.btn{background:var(--ink);color:var(--field);border:0;border-radius:8px;padding:10px 16px;font:inherit;font-weight:600;cursor:pointer}
+.ghost{background:none;color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:6px 12px;font:inherit;cursor:pointer}
+.ghost:hover{border-color:var(--carb)}
+.banner{background:var(--carb-soft);border-radius:8px;padding:10px 14px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+.strip{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-bottom:16px}
+.day{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:8px 2px;text-align:center;font:inherit;color:var(--ink);cursor:pointer;display:flex;flex-direction:column;gap:1px}
+.day span{font-weight:650}
+.day strong{font-size:.92rem}
+.day small{color:var(--muted);font-size:.72rem}
+.day.on{border-color:var(--carb);background:var(--carb-soft)}
+.total{margin:0 0 12px;color:var(--muted)}
+.total b{color:var(--ink)}
+.meal,.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin-bottom:12px}
+.mhead{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.mhead h3{margin:0;font-size:1.05rem}
+.hc{margin:8px 0 6px;font-size:.95rem}
+.hc b{font-size:1.25rem;color:var(--carb)}
+.gauge{position:relative;height:14px;background:var(--carb-soft);border-radius:4px;overflow:hidden}
+.gauge .fill{position:absolute;inset:0 auto 0 0;background:var(--carb)}
+.gauge i{position:absolute;top:0;bottom:0;width:1px;background:var(--panel);opacity:.7}
+.gauge .goal{position:absolute;top:0;bottom:0;width:3px;margin-left:-1px;background:var(--ink)}
+.gcap{display:flex;justify-content:space-between;color:var(--muted);font-size:.78rem;margin-top:3px}
+ul.items{list-style:none;margin:10px 0 0;padding:0}
+ul.items li{display:flex;justify-content:space-between;gap:14px;padding:7px 0;border-top:1px solid var(--line)}
+ul.items .q{color:var(--muted);text-align:right}
+em{font-style:normal;font-size:.75rem;border:1px solid var(--line);border-radius:4px;padding:0 5px;margin-left:6px;color:var(--muted)}
+em.hi{color:var(--warn);border-color:var(--warn)}
+.macros{color:var(--muted);font-size:.85rem;margin-top:8px}
+label{display:block;margin:12px 0 4px;font-weight:600}
+input[type=number],select{font:inherit;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--panel);color:var(--ink);max-width:100%}
+input[type=number]{width:110px}
+input[type=range]{width:100%}
+.row{display:grid;grid-template-columns:1.3fr 1fr 1fr 1.6fr;gap:8px;align-items:center;padding:6px 0;border-top:1px solid var(--line)}
+.row.h{color:var(--muted);font-size:.82rem;border-top:0}
+.row small{color:var(--muted)}
+.warn{color:var(--warn)}
+.chk{display:flex;flex-wrap:wrap;gap:6px 14px}
+.chk label{display:flex;align-items:center;gap:6px;margin:0;font-weight:400}
+.pin{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 0;border-top:1px solid var(--line)}
+.pin small{color:var(--muted);display:block}
+details{margin-top:10px}
+summary{cursor:pointer;font-weight:600}
+.vgroup{margin:10px 0 4px;color:var(--muted);font-size:.85rem}
+.foot{color:var(--muted);font-size:.8rem;margin-top:24px}
+.empty{color:var(--muted);padding:6px 0}
+@media (prefers-reduced-motion:no-preference){.gauge .fill{transition:width .3s}}
+@media (max-width:520px){.row{grid-template-columns:1fr 1fr;} .row.h{display:none}}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+/* ============ DATOS ============ */
+const MEALS=[{id:'D',n:'Desayuno'},{id:'A',n:'Almuerzo'},{id:'C',n:'Comida'},{id:'M',n:'Merienda'},{id:'N',n:'Cena'}];
+const DAYS=['Lunes','Martes','Miércoles','Jueves','Viernes','Sábado','Domingo'];
+const CATS=[['dairy','Lácteos y bebidas'],['carb','Hidratos base'],['prot','Proteínas'],['veg','Verduras'],['fruit','Fruta'],['fat','Grasas y frutos secos']];
+
+/* F(id,nombre,cat,tomas,kcal,hidratos,prot,grasa  (por 100 g),
+     estado,factor crudo→cocinado,min,max,paso,por defecto (g),IG,gramos por unidad,[sing,plur]) */
+function F(id,n,cat,m,k,c,p,f,st,fx,min,max,step,def,gi,u,un){return{id,n,cat,m,k,c,p,f,st,fx,min,max,step,def,gi,u,un}}
+const FOODS=[
+ // Hidratos base
+ F('pan','Pan integral','carb','DACMN',240,43,9,2.5,'listo',null,30,120,10,60,'m',30,['rebanada','rebanadas']),
+ F('avena','Copos de avena','carb','D',370,60,13,7,'crudo',null,20,80,10,40,'b'),
+ F('arroz','Arroz basmati','carb','CN',350,78,7.5,0.6,'crudo',2.5,30,110,5,60,'m'),
+ F('pasta','Pasta integral','carb','CN',330,62,12,2.5,'crudo',2.2,30,110,5,60,'b'),
+ F('lentejas','Lentejas','carb','CN',340,52,24,1.5,'crudo',2.5,30,100,5,60,'b'),
+ F('garbanzos','Garbanzos','carb','CN',360,47,20,5.5,'crudo',2.3,30,100,5,60,'b'),
+ F('quinoa','Quinoa','carb','CN',365,64,14,6,'crudo',2.8,30,100,5,55,'m'),
+ F('boniato','Boniato','carb','CN',86,20,1.6,0.1,'crudo',null,80,300,10,150,'m'),
+ F('patata','Patata','carb','CN',77,17,2,0.1,'crudo',null,80,300,10,150,'a'),
+ // Proteínas
+ F('pollo','Pechuga de pollo','prot','CN',110,0,23,1.5,'crudo',0.75,80,220,10,140,'b'),
+ F('pavo','Pechuga de pavo','prot','CN',105,0,23,1.2,'crudo',0.75,80,220,10,140,'b'),
+ F('ternera','Ternera magra','prot','C',135,0,21,5,'crudo',0.7,80,200,10,120,'b'),
+ F('merluza','Merluza','prot','CN',75,0,16.5,1,'crudo',0.85,100,300,10,180,'b'),
+ F('salmon','Salmón','prot','CN',200,0,20,13,'crudo',0.8,80,180,10,120,'b'),
+ F('atun','Atún al natural (lata)','prot','ACMN',105,0,24,1,'listo',null,50,160,10,80,'b',52,['lata','latas']),
+ F('huevo','Huevo','prot','DACN',143,0.7,12.5,10,'listo',null,60,180,60,120,'b',60,['huevo','huevos']),
+ F('tofu','Tofu','prot','CN',125,1.5,13,7,'listo',null,80,200,10,120,'b'),
+ F('jamon','Jamón cocido extra','prot','ADMN',105,1,18,3,'listo',null,30,90,15,45,'b',15,['loncha','lonchas']),
+ // Verduras
+ F('ensalada','Ensalada mixta','veg','CN',17,3,1,0.2,'crudo',null,100,300,50,150,'b'),
+ F('brocoli','Brócoli','veg','CN',34,3,2.8,0.4,'crudo',0.9,100,300,50,150,'b'),
+ F('judias','Judías verdes','veg','CN',31,3.6,1.8,0.2,'crudo',0.9,100,300,50,150,'b'),
+ F('calabacin','Calabacín','veg','CN',17,2.5,1.2,0.3,'crudo',0.9,100,300,50,150,'b'),
+ F('espinacas','Espinacas','veg','CN',23,1.5,2.9,0.4,'crudo',0.6,100,300,50,150,'b'),
+ F('pimiento','Pimiento','veg','CN',27,5,1,0.3,'crudo',0.8,100,300,50,150,'b'),
+ F('coliflor','Coliflor','veg','CN',25,3,2,0.3,'crudo',0.9,100,300,50,150,'b'),
+ F('champi','Champiñones','veg','CN',22,2.5,3,0.3,'crudo',0.75,100,300,50,150,'b'),
+ // Fruta
+ F('manzana','Manzana','fruit','DACMN',52,12,0.3,0.2,'crudo',null,100,250,50,150,'b',150,['pieza','piezas']),
+ F('pera','Pera','fruit','DACMN',57,12.5,0.4,0.1,'crudo',null,100,250,50,160,'b',160,['pieza','piezas']),
+ F('naranja','Naranja','fruit','DACMN',47,9.4,0.9,0.1,'crudo',null,100,300,50,180,'b',180,['pieza','piezas']),
+ F('mandarina','Mandarina','fruit','DACMN',46,10,0.7,0.2,'crudo',null,80,240,40,80,'b',80,['pieza','piezas']),
+ F('fresas','Fresas','fruit','DACMN',32,6,0.7,0.3,'crudo',null,100,300,50,150,'b'),
+ F('kiwi','Kiwi','fruit','DACMN',61,12,1.1,0.5,'crudo',null,80,240,80,80,'b',80,['pieza','piezas']),
+ F('melon','Melón','fruit','DACMN',34,7,0.8,0.2,'crudo',null,100,300,50,150,'m'),
+ F('platano','Plátano','fruit','DAM',90,20,1.1,0.3,'crudo',null,50,120,10,100,'m',100,['pieza','piezas']),
+ // Lácteos y bebidas
+ F('cafeleche','Café con leche (leche semidesnatada)','dairy','DAM',23,2.4,1.65,0.8,'listo',null,200,400,200,200,'b',200,['taza','tazas']),
+ F('leche','Leche semidesnatada','dairy','DAM',46,4.8,3.3,1.6,'listo',null,150,300,50,200,'b',200,['vaso','vasos']),
+ F('yogur','Yogur natural edulcorado (sin azúcar)','dairy','DACMN',47,5,4.2,1.7,'listo',null,125,250,125,125,'b',125,['yogur','yogures']),
+ F('griego','Yogur griego 0 % natural','dairy','DACMN',55,4,9.5,0.3,'listo',null,125,250,125,125,'b',125,['yogur','yogures']),
+ F('quesobatido','Queso fresco batido 0 %','dairy','DAMN',46,3.5,8,0.2,'listo',null,100,250,25,125,'b'),
+ // Grasas y frutos secos
+ F('aove','Aceite de oliva virgen extra','fat','DCN',884,0,0,100,'listo',null,5,20,5,10,'b',10,['cucharada','cucharadas']),
+ F('aguacate','Aguacate','fat','DACMN',160,2,2,15,'crudo',null,30,100,10,50,'b'),
+ F('nueces','Nueces','fat','ADMN',650,4,15,65,'listo',null,10,40,5,20,'b'),
+ F('almendras','Almendras','fat','ADMN',580,5.5,21,50,'listo',null,10,40,5,20,'b'),
+];
+const byId=Object.fromEntries(FOODS.map(f=>[f.id,f]));
+
+/* Plantillas por toma: cada hueco admite categorías y tiene probabilidad de aparecer */
+const TPL={
+ D:[{c:['dairy'],p:1},{c:['carb'],p:1},{c:['prot'],p:.6},{c:['fruit'],p:.5},{c:['fat'],p:.25}],
+ A:[{c:['fruit','dairy'],p:1},{c:['fat'],p:.5},{c:['carb'],p:.3},{c:['prot'],p:.2}],
+ C:[{c:['carb'],p:1},{c:['prot'],p:1},{c:['veg'],p:1},{c:['fat'],p:.9},{c:['fruit','dairy'],p:.4}],
+ M:[{c:['fruit','dairy'],p:1},{c:['fat'],p:.5},{c:['carb'],p:.4},{c:['prot'],p:.25}],
+ N:[{c:['prot'],p:1},{c:['veg'],p:1},{c:['carb'],p:.85},{c:['fat'],p:.8},{c:['dairy'],p:.35}]
+};
+
+/* ============ ESTADO ============ */
+const DEFAULTS={kcal:1800,carbPct:45,kshare:[20,10,35,10,25],cshare:[20,10,30,10,30],allowHigh:false,veto:[],pins:[],plan:null,day:0,tab:'week',stale:false};
+let S=JSON.parse(JSON.stringify(DEFAULTS));
+let draft={food:'cafeleche',meals:[0,1],days:[0,1,2,3,4,5,6],mode:'fixed',g:200};
+
+function save(){try{localStorage.setItem('menuHC',JSON.stringify(S))}catch(e){}}
+function load(){try{const r=localStorage.getItem('menuHC');if(r)S=Object.assign(S,JSON.parse(r))}catch(e){}}
+
+/* ============ CÁLCULO ============ */
+const sum=a=>a.reduce((x,y)=>x+y,0);
+const share=(arr,i)=>{const t=sum(arr);return t>0?arr[i]/t:1/arr.length};
+const fmt=(n,d=0)=>n.toLocaleString('es-ES',{minimumFractionDigits:d,maximumFractionDigits:d});
+function targets(mi){return{k:S.kcal*share(S.kshare,mi),hc:S.kcal*S.carbPct/100/4*share(S.cshare,mi)}}
+function nut(f,g){const r=g/100;return{k:f.k*r,c:f.c*r,p:f.p*r,f:f.f*r}}
+function evalItems(items,tg){
+  let k=0,c=0,p=0,f=0;
+  for(const it of items){const n=nut(byId[it.id],it.g);k+=n.k;c+=n.c;p+=n.p;f+=n.f}
+  const ce=c-tg.hc, ke=k-tg.k;
+  const loss=(((ce>0?ce*1.3:ce))/2.5)**2+(ke/35)**2;
+  return{k,c,p,f,loss};
+}
+function optimize(items,tg){
+  let cur=evalItems(items,tg);
+  for(let n=0;n<400;n++){
+    let best=null;
+    items.forEach((x,i)=>{
+      if(x.fixed)return;
+      const f=byId[x.id];
+      for(const d of[-1,1]){
+        const ng=x.g+d*f.step;
+        if(ng<f.min-1e-9||ng>f.max+1e-9)continue;
+        const old=x.g;x.g=ng;const e=evalItems(items,tg);x.g=old;
+        if(e.loss<cur.loss-1e-6&&(!best||e.loss<best.e.loss))best={i,ng,e};
+      }
+    });
+    if(!best)break;
+    items[best.i].g=best.ng;cur=best.e;
+  }
+  return cur;
+}
+function pool(slot,meal,used,exclude){
+  const base=FOODS.filter(f=>slot.c.includes(f.cat)&&f.m.includes(meal)&&!S.veto.includes(f.id)&&!used.has(f.id)&&(S.allowHigh||f.gi!=='a'));
+  const free=base.filter(f=>!exclude.has(f.id));
+  return free.length?free:base;
+}
+function pick(list,usage){
+  const w=list.map(f=>1/(1+(usage[f.id]||0)*1.5));
+  let r=Math.random()*sum(w);
+  for(let i=0;i<list.length;i++){r-=w[i];if(r<=0)return list[i]}
+  return list[list.length-1];
+}
+function buildCandidate(mi,pins,exclude,usage){
+  const meal=MEALS[mi].id;
+  const used=new Set(pins.map(p=>p.foodId));
+  const items=pins.map(p=>({id:p.foodId,g:p.grams!=null?p.grams:byId[p.foodId].def,fixed:p.grams!=null,pin:p.id}));
+  for(const slot of TPL[meal]){
+    if(pins.some(p=>slot.c.includes(byId[p.foodId].cat)))continue;
+    if(Math.random()>slot.p)continue;
+    const list=pool(slot,meal,used,exclude);
+    if(!list.length)continue;
+    const f=pick(list,usage);
+    used.add(f.id);
+    items.push({id:f.id,g:f.def,fixed:false});
+  }
+  return items;
+}
+function generateMeal(mi,pins,exclude,usage){
+  const tg=targets(mi);
+  let best=null;
+  for(let t=0;t<120;t++){
+    const items=buildCandidate(mi,pins,exclude,usage);
+    if(!items.length)continue;
+    const e=optimize(items,tg);
+    if(!best||e.loss<best.e.loss)best={items:items.map(x=>({...x})),e};
+    if(e.loss<0.8)break;
+  }
+  if(!best)return{items:[],tot:{k:0,c:0,p:0,f:0}};
+  return{items:best.items,tot:{k:best.e.k,c:best.e.c,p:best.e.p,f:best.e.f}};
+}
+function pinsForMeal(dayIdx,assign,mi){
+  return S.pins.filter(p=>p.days.includes(dayIdx)&&assign[p.id]===mi);
+}
+function genWeek(){
+  const usage={};
+  const plan=[];
+  for(let d=0;d<7;d++){
+    const assign={};
+    S.pins.forEach(p=>{if(p.days.includes(d)&&p.meals.length)assign[p.id]=p.meals[Math.floor(Math.random()*p.meals.length)]});
+    const meals=[];
+    for(let mi=0;mi<5;mi++){
+      const m=generateMeal(mi,pinsForMeal(d,assign,mi),new Set(),usage);
+      m.items.forEach(it=>{if(!it.pin)usage[it.id]=(usage[it.id]||0)+1});
+      meals.push(m);
+    }
+    plan.push({pins:assign,meals});
+  }
+  S.plan=plan;S.stale=false;save();
+}
+function renewMeal(d,mi){
+  const day=S.plan[d];
+  const exclude=new Set(day.meals[mi].items.filter(i=>!i.pin).map(i=>i.id));
+  const usage={};
+  S.plan.forEach(dd=>dd.meals.forEach(m=>m.items.forEach(i=>{if(!i.pin)usage[i.id]=(usage[i.id]||0)+1})));
+  day.meals[mi]=generateMeal(mi,pinsForMeal(d,day.pins,mi),exclude,usage);
+  save();render();
+}
+function dayTot(d){
+  const t={k:0,c:0,p:0,f:0};
+  d.meals.forEach(m=>{t.k+=m.tot.k;t.c+=m.tot.c;t.p+=m.tot.p;t.f+=m.tot.f});
+  return t;
+}
+
+/* ============ TEXTOS ============ */
+function qty(f,g){
+  let s;
+  if(f.fx)s=`${g} g en crudo · ≈ ${Math.round(g*f.fx/5)*5} g cocinado`;
+  else s=f.st==='crudo'?`${g} g (crudo)`:`${g} g`;
+  if(f.u){const n=Math.round(g/f.u*2)/2;s+=` · ≈ ${fmt(n,n%1?1:0)} ${n===1?f.un[0]:f.un[1]}`}
+  return s;
+}
+function daysLabel(ds){
+  if(ds.length===7)return 'todos los días';
+  return ds.slice().sort().map(i=>DAYS[i].slice(0,3)).join(', ');
+}
+
+/* ============ VISTAS ============ */
+function gauge(c,t){
+  const max=Math.max(t*1.4,c*1.1,10);
+  const pct=v=>(v/max*100).toFixed(1);
+  let ticks='';
+  for(let g=10;g<max;g+=10)ticks+=`<i style="left:${pct(g)}%"></i>`;
+  return `<div class="gauge" role="img" aria-label="Hidratos ${fmt(c)} g de ${fmt(t)} g objetivo"><div class="fill" style="width:${pct(c)}%"></div>${ticks}<b class="goal" style="left:${pct(t)}%"></b></div>
+  <div class="gcap"><span>cada marca = 1 ración (10 g)</span><span>línea = objetivo</span></div>`;
+}
+function viewWeek(){
+  if(!S.plan)return '';
+  const strip=S.plan.map((d,i)=>{const t=dayTot(d);
+    return `<button class="day ${i===S.day?'on':''}" onclick="setDay(${i})" aria-label="${DAYS[i]}"><span>${DAYS[i].slice(0,3)}</span><strong>${fmt(t.c)} g</strong><small>${fmt(t.k)} kcal</small></button>`}).join('');
+  const d=S.plan[S.day],t=dayTot(d);
+  const meals=d.meals.map((m,mi)=>{
+    const tg=targets(mi);
+    const items=m.items.map(it=>{const f=byId[it.id];
+      return `<li><span>${f.n}${it.pin?'<em>fijado</em>':''}${f.gi==='a'?'<em class="hi">IG alto</em>':''}</span><span class="q">${qty(f,it.g)}</span></li>`}).join('');
+    return `<section class="meal">
+      <div class="mhead"><h3>${MEALS[mi].n}</h3><button class="ghost" onclick="renewMeal(${S.day},${mi})">Renovar</button></div>
+      <div class="hc"><b>${fmt(m.tot.c)} g</b> de hidratos · ${fmt(m.tot.c/10,1)} raciones · objetivo ${fmt(tg.hc)} g</div>
+      ${gauge(m.tot.c,tg.hc)}
+      <ul class="items">${items||'<li class="empty">Sin alimentos disponibles para esta toma. Revisa los vetos.</li>'}</ul>
+      <div class="macros">${fmt(m.tot.k)} kcal (objetivo ${fmt(tg.k)}) · proteína ${fmt(m.tot.p)} g · grasa ${fmt(m.tot.f)} g</div>
+    </section>`}).join('');
+  return `<div class="strip">${strip}</div>
+    <p class="total"><b>${DAYS[S.day]}:</b> ${fmt(t.k)} kcal · <b>${fmt(t.c)} g</b> de hidratos (${fmt(t.c/10,1)} raciones) · proteína ${fmt(t.p)} g · grasa ${fmt(t.f)} g</p>
+    ${meals}`;
+}
+function viewSettings(){
+  const rows=MEALS.map((m,i)=>{const tg=targets(i);
+    return `<div class="row"><span>${m.n}</span>
+      <input type="number" min="0" max="100" value="${S.kshare[i]}" onchange="setShare('kshare',${i},this.value)" aria-label="% de calorías en ${m.n}">
+      <input type="number" min="0" max="100" value="${S.cshare[i]}" onchange="setShare('cshare',${i},this.value)" aria-label="% de hidratos en ${m.n}">
+      <small>${fmt(tg.k)} kcal · ${fmt(tg.hc)} g (${fmt(tg.hc/10,1)} rac.)</small></div>`}).join('');
+  const ks=sum(S.kshare),cs=sum(S.cshare);
+  const vetoes=CATS.map(([c,n])=>`<div class="vgroup">${n}</div><div class="chk">${FOODS.filter(f=>f.cat===c).map(f=>
+    `<label><input type="checkbox" ${S.veto.includes(f.id)?'checked':''} onchange="toggleVeto('${f.id}')"> ${f.n}</label>`).join('')}</div>`).join('');
+  return `<section class="card">
+    <h2>Objetivo diario</h2>
+    <label for="kc">Calorías al día</label>
+    <input id="kc" type="number" min="1000" max="4000" step="50" value="${S.kcal}" onchange="setNum('kcal',this.value,1000,4000)">
+    <label for="cp">Hidratos sobre el total de calorías: ${S.carbPct} %</label>
+    <input id="cp" type="range" min="35" max="55" value="${S.carbPct}" onchange="setNum('carbPct',this.value,35,55)">
+    <p class="sub">Hoy equivale a ${fmt(S.kcal*S.carbPct/100/4)} g de hidratos al día (${fmt(S.kcal*S.carbPct/100/40,1)} raciones).</p>
+  </section>
+  <section class="card">
+    <h2>Reparto por toma</h2>
+    <p class="sub">Los hidratos van repartidos a lo largo del día para evitar picos. Ajusta los porcentajes a lo que indique su equipo médico o su dietista.</p>
+    <div class="row h"><span>Toma</span><span>% calorías</span><span>% hidratos</span><span>Objetivo resultante</span></div>
+    ${rows}
+    ${ks!==100||cs!==100?`<p class="warn">Los porcentajes suman ${ks} % (calorías) y ${cs} % (hidratos). La app los ajusta proporcionalmente, pero conviene que sumen 100.</p>`:''}
+  </section>
+  <section class="card">
+    <h2>Alimentos</h2>
+    <label style="display:flex;gap:8px;align-items:center;font-weight:400"><input type="checkbox" ${S.allowHigh?'checked':''} onchange="toggleHigh()"> Permitir alimentos de índice glucémico alto (patata)</label>
+    <details><summary>Vetar alimentos que no quiero ver</summary>${vetoes}</details>
+  </section>
+  <p class="foot">Herramienta de apoyo para organizar comidas. Los objetivos de hidratos deben fijarlos su endocrino o dietista. La app no calcula dosis de insulina.</p>`;
+}
+function viewPins(){
+  const opts=CATS.map(([c,n])=>`<optgroup label="${n}">${FOODS.filter(f=>f.cat===c).map(f=>`<option value="${f.id}" ${draft.food===f.id?'selected':''}>${f.n}</option>`).join('')}</optgroup>`).join('');
+  const meals=MEALS.map((m,i)=>`<label><input type="checkbox" ${draft.meals.includes(i)?'checked':''} onchange="dMeal(${i})"> ${m.n}</label>`).join('');
+  const days=DAYS.map((d,i)=>`<label><input type="checkbox" ${draft.days.includes(i)?'checked':''} onchange="dDay(${i})"> ${d.slice(0,3)}</label>`).join('');
+  const f=byId[draft.food];
+  const list=S.pins.map(p=>{const pf=byId[p.foodId];
+    return `<div class="pin"><div><strong>${pf.n}</strong><small>${p.meals.map(i=>MEALS[i].n).join(' o ')} · ${daysLabel(p.days)} · ${p.grams!=null?qty(pf,p.grams):'cantidad calculada por la app'}</small></div><button class="ghost" onclick="delPin('${p.id}')">Quitar</button></div>`}).join('');
+  return `<section class="card">
+    <h2>Fijar un alimento</h2>
+    <p class="sub">La app lo coloca en la toma que elijas y calcula el resto alrededor de él.</p>
+    <label for="pf">Alimento</label><select id="pf" onchange="dFood(this.value)">${opts}</select>
+    <label>Tomas posibles</label><div class="chk">${meals}</div>
+    <p class="sub">Si marcas varias, cada día lo coloca en una de ellas.</p>
+    <label>Días</label><div class="chk">${days}</div>
+    <label>Cantidad</label>
+    <div class="chk">
+      <label><input type="radio" name="mode" ${draft.mode==='fixed'?'checked':''} onchange="dMode('fixed')"> Cantidad fija</label>
+      <label><input type="radio" name="mode" ${draft.mode==='free'?'checked':''} onchange="dMode('free')"> La calcula la app</label>
+    </div>
+    ${draft.mode==='fixed'?`<label for="pg">Gramos${f.u?` (1 ${f.un[0]} ≈ ${f.u} g)`:''}</label><input id="pg" type="number" min="1" step="5" value="${draft.g}" onchange="draft.g=+this.value||${f.def}">`:''}
+    <p><button class="btn" onclick="addPin()">Añadir alimento fijado</button></p>
+  </section>
+  <section class="card"><h2>Alimentos fijados</h2>${list||'<p class="empty">Todavía no has fijado ninguno. Prueba con el café con leche del desayuno.</p>'}</section>`;
+}
+function viewShop(){
+  if(!S.plan)return '';
+  const tot={};
+  S.plan.forEach(d=>d.meals.forEach(m=>m.items.forEach(i=>tot[i.id]=(tot[i.id]||0)+i.g)));
+  const groups=CATS.map(([c,n])=>{
+    const rows=FOODS.filter(f=>f.cat===c&&tot[f.id]).map(f=>`<li><span>${f.n}</span><span class="q">${qty(f,tot[f.id])}</span></li>`).join('');
+    return rows?`<section class="card"><h2>${n}</h2><ul class="items">${rows}</ul></section>`:'';
+  }).join('');
+  return `<p class="sub" style="margin-bottom:12px">Total de la semana. Las cantidades con estado van en crudo, tal como se compran.</p>${groups}`;
+}
+function render(){
+  const tabs=[['week','Semana'],['settings','Objetivos'],['pins','Fijados'],['shop','Compra']];
+  const views={week:viewWeek,settings:viewSettings,pins:viewPins,shop:viewShop};
+  document.querySelector('#app').innerHTML=`
+    <header>
+      <div><h1>Menú semanal</h1><p class="sub">Cinco tomas al día, con los hidratos de cada una</p></div>
+      <button class="btn" onclick="regen()">Generar semana nueva</button>
+    </header>
+    <nav>${tabs.map(([k,n])=>`<button class="${S.tab===k?'on':''}" onclick="setTab('${k}')">${n}</button>`).join('')}</nav>
+    ${S.stale?`<div class="banner"><span>Has cambiado objetivos o alimentos fijados. El menú actual no los refleja.</span><button class="ghost" onclick="regen()">Generar semana nueva</button></div>`:''}
+    ${views[S.tab]()}`;
+}
+
+/* ============ ACCIONES ============ */
+function setTab(t){S.tab=t;save();render()}
+function setDay(i){S.day=i;save();render()}
+function regen(){genWeek();S.tab='week';render()}
+function clamp(v,a,b){v=Number(v);if(isNaN(v))v=a;return Math.min(b,Math.max(a,v))}
+function setNum(k,v,a,b){S[k]=clamp(v,a,b);S.stale=true;save();render()}
+function setShare(k,i,v){S[k][i]=clamp(v,0,100);S.stale=true;save();render()}
+function toggleHigh(){S.allowHigh=!S.allowHigh;S.stale=true;save();render()}
+function toggleVeto(id){const i=S.veto.indexOf(id);i>=0?S.veto.splice(i,1):S.veto.push(id);S.stale=true;save();render()}
+function dFood(id){draft.food=id;draft.g=byId[id].u||byId[id].def;render()}
+function dMeal(i){const a=draft.meals,k=a.indexOf(i);k>=0?a.splice(k,1):a.push(i);render()}
+function dDay(i){const a=draft.days,k=a.indexOf(i);k>=0?a.splice(k,1):a.push(i);render()}
+function dMode(m){draft.mode=m;render()}
+function addPin(){
+  if(!draft.meals.length||!draft.days.length){alert('Elige al menos una toma y un día.');return}
+  S.pins.push({id:'p'+Date.now().toString(36),foodId:draft.food,meals:draft.meals.slice().sort(),days:draft.days.slice().sort(),grams:draft.mode==='fixed'?Math.max(1,Number(draft.g)||byId[draft.food].def):null});
+  S.stale=true;save();render();
+}
+function delPin(id){S.pins=S.pins.filter(p=>p.id!==id);S.stale=true;save();render()}
+
+/* ============ ARRANQUE ============ */
+load();
+if(!S.plan||S.plan.length!==7)genWeek();
+render();
+</script>
+</body>
+</html>
