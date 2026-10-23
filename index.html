@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Menú semanal por hidratos</title>
+<title>Menú semanal por raciones de hidratos</title>
 <style>
 :root{
   --field:#EAF0EC; --panel:#FFFFFF; --ink:#16302B; --muted:#5B706A; --line:#D3DED8;
@@ -33,7 +33,7 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid 
 .strip{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-bottom:16px}
 .day{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:8px 2px;text-align:center;font:inherit;color:var(--ink);cursor:pointer;display:flex;flex-direction:column;gap:1px}
 .day span{font-weight:650}
-.day strong{font-size:.92rem}
+.day strong{font-size:.88rem}
 .day small{color:var(--muted);font-size:.72rem}
 .day.on{border-color:var(--carb);background:var(--carb-soft)}
 .total{margin:0 0 12px;color:var(--muted)}
@@ -51,14 +51,16 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid 
 ul.items{list-style:none;margin:10px 0 0;padding:0}
 ul.items li{display:flex;justify-content:space-between;gap:14px;padding:7px 0;border-top:1px solid var(--line)}
 ul.items .q{color:var(--muted);text-align:right}
+ul.items .q .rac{display:block;color:var(--carb);font-weight:650}
+ul.items .d{display:block;color:var(--muted);font-size:.8rem}
 em{font-style:normal;font-size:.75rem;border:1px solid var(--line);border-radius:4px;padding:0 5px;margin-left:6px;color:var(--muted)}
 em.hi{color:var(--warn);border-color:var(--warn)}
 .macros{color:var(--muted);font-size:.85rem;margin-top:8px}
 label{display:block;margin:12px 0 4px;font-weight:600}
 input[type=number],select{font:inherit;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--panel);color:var(--ink);max-width:100%}
-input[type=number]{width:110px}
+input[type=number]{width:100px}
 input[type=range]{width:100%}
-.row{display:grid;grid-template-columns:1.3fr 1fr 1fr 1.6fr;gap:8px;align-items:center;padding:6px 0;border-top:1px solid var(--line)}
+.row{display:grid;grid-template-columns:1.1fr .9fr .9fr 1.8fr;gap:8px;align-items:center;padding:6px 0;border-top:1px solid var(--line)}
 .row.h{color:var(--muted);font-size:.82rem;border-top:0}
 .row small{color:var(--muted)}
 .warn{color:var(--warn)}
@@ -71,73 +73,205 @@ summary{cursor:pointer;font-weight:600}
 .vgroup{margin:10px 0 4px;color:var(--muted);font-size:.85rem}
 .foot{color:var(--muted);font-size:.8rem;margin-top:24px}
 .empty{color:var(--muted);padding:6px 0}
+.shophead{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px}
 @media (prefers-reduced-motion:no-preference){.gauge .fill{transition:width .3s}}
-@media (max-width:520px){.row{grid-template-columns:1fr 1fr;} .row.h{display:none}}
+@media (max-width:560px){.row{grid-template-columns:1fr 1fr;} .row.h{display:none} .row small{grid-column:1/-1}}
 </style>
 </head>
 <body>
 <div id="app"></div>
 <script>
-/* ============ DATOS ============ */
+/* ============ DATOS ============
+   Hidratos y IG: tabla de raciones de la Fundación para la Diabetes, 3.ª edición, verificada con la versión web (1 ración = 10 g de HC).
+   Hidratos por 100 g = 1000 / gramos por ración.
+   Calorías, proteína y grasa: valores medios aproximados de composición de alimentos (no vienen en la tabla). */
 const MEALS=[{id:'D',n:'Desayuno'},{id:'A',n:'Almuerzo'},{id:'C',n:'Comida'},{id:'M',n:'Merienda'},{id:'N',n:'Cena'}];
 const DAYS=['Lunes','Martes','Miércoles','Jueves','Viernes','Sábado','Domingo'];
-const CATS=[['dairy','Lácteos y bebidas'],['carb','Hidratos base'],['prot','Proteínas'],['veg','Verduras'],['fruit','Fruta'],['fat','Grasas y frutos secos']];
+const CATS=[['dairy','Lácteos y bebidas'],['carb','Cereales, legumbres y tubérculos'],['prot','Proteínas'],['veg','Hortalizas'],['fruit','Fruta'],['fat','Grasas y frutos secos']];
 
-/* F(id,nombre,cat,tomas,kcal,hidratos,prot,grasa  (por 100 g),
-     estado,factor crudo→cocinado,min,max,paso,por defecto (g),IG,gramos por unidad,[sing,plur]) */
-function F(id,n,cat,m,k,c,p,f,st,fx,min,max,step,def,gi,u,un){return{id,n,cat,m,k,c,p,f,st,fx,min,max,step,def,gi,u,un}}
+/* F(id,nombre,cat,tomas,kcal/100g,prot/100g,grasa/100g,g por ración HC,IG,estado,factor crudo→cocinado,
+     min,max,paso,por defecto(g),g por unidad,[sing,plur],HC por 100 g si no hay dato de tabla) */
+function F(id,n,cat,m,k,p,f,gpr,gi,st,fx,min,max,step,def,u,un,c0){
+  return{id,n,cat,m,k,p,f,gpr,gi,st,fx,min,max,step,def,u,un,c:gpr?1000/gpr:(c0||0)};
+}
+const PU=['pieza','piezas'],TZ=['taza','tazas'],VS=['vaso','vasos'],YG=['yogur','yogures'],RB=['rebanada','rebanadas'];
 const FOODS=[
- // Hidratos base
- F('pan','Pan integral','carb','DACMN',240,43,9,2.5,'listo',null,30,120,10,60,'m',30,['rebanada','rebanadas']),
- F('avena','Copos de avena','carb','D',370,60,13,7,'crudo',null,20,80,10,40,'b'),
- F('arroz','Arroz basmati','carb','CN',350,78,7.5,0.6,'crudo',2.5,30,110,5,60,'m'),
- F('pasta','Pasta integral','carb','CN',330,62,12,2.5,'crudo',2.2,30,110,5,60,'b'),
- F('lentejas','Lentejas','carb','CN',340,52,24,1.5,'crudo',2.5,30,100,5,60,'b'),
- F('garbanzos','Garbanzos','carb','CN',360,47,20,5.5,'crudo',2.3,30,100,5,60,'b'),
- F('quinoa','Quinoa','carb','CN',365,64,14,6,'crudo',2.8,30,100,5,55,'m'),
- F('boniato','Boniato','carb','CN',86,20,1.6,0.1,'crudo',null,80,300,10,150,'m'),
- F('patata','Patata','carb','CN',77,17,2,0.1,'crudo',null,80,300,10,150,'a'),
+ // Cereales, legumbres y tubérculos (cantidades en crudo; el equivalente cocinado sale de la tabla)
+ F('pan','Pan integral','carb','DACMN',240,9,2.5,23,40,'listo',null,30,120,10,60,30,RB),
+ F('pancenteno','Pan de centeno','carb','DACMN',250,8,1.5,20,65,'listo',null,30,120,10,60,30,RB),
+ F('panblanco','Pan blanco','carb','DACMN',265,8.5,1,20,70,'listo',null,30,120,10,60,30,RB),
+ F('avena','Copos de avena','carb','DM',370,13,7,15,40,'crudo',2.27,20,80,10,40),
+ F('cerealfibra','Cereales de desayuno ricos en fibra','carb','DM',340,10,3,20,50,'listo',null,20,60,10,30),
+ F('muesli','Cereales tipo muesli','carb','DM',360,9,6,15,65,'listo',null,20,60,10,30),
+ F('arrozbl','Arroz blanco','carb','CN',350,7,0.6,13,70,'crudo',2.92,30,110,5,55),
+ F('arrozint','Arroz integral','carb','CN',350,7.5,2.5,13,50,'crudo',3.08,30,110,5,55),
+ F('pasta','Pasta','carb','CN',360,12.5,1.5,14,50,'crudo',3.21,30,110,5,55),
+ F('pastaint','Pasta integral','carb','CN',330,12,2.5,15,45,'crudo',3,30,110,5,55),
+ F('cuscus','Cuscús','carb','CN',365,12,1.5,15,65,'crudo',3,30,110,5,55),
+ F('quinoa','Quinoa','carb','CN',365,14,6,19,35,'crudo',2.53,30,100,5,50),
+ F('cebada','Cebada','carb','CN',350,10,1.5,14,45,'crudo',3,30,100,5,50),
+ F('sarraceno','Trigo sarraceno','carb','CN',343,13,3.4,14,40,'crudo',3,30,100,5,50),
+ F('lentejas','Lentejas','carb','CN',340,24,1.5,20,35,'crudo',2.5,30,100,5,55),
+ F('garbanzos','Garbanzos','carb','CN',360,20,5.5,20,35,'crudo',2.75,30,100,5,55),
+ F('alubias','Alubias blancas','carb','CN',330,23,1.5,25,35,'crudo',2.2,30,100,5,55),
+ F('boniato','Boniato','carb','CN',86,1.6,0.1,50,50,'crudo',null,80,300,10,150),
+ F('patata','Patata','carb','CN',77,2,0.1,65,65,'crudo',null,80,300,10,150),
+ F('guisantes','Guisantes','carb','CN',80,6,0.4,100,35,'crudo',null,60,200,20,100),
+ F('hummus','Hummus','carb','ACMN',230,7.5,16,100,null,'listo',null,30,120,10,60),
  // Proteínas
- F('pollo','Pechuga de pollo','prot','CN',110,0,23,1.5,'crudo',0.75,80,220,10,140,'b'),
- F('pavo','Pechuga de pavo','prot','CN',105,0,23,1.2,'crudo',0.75,80,220,10,140,'b'),
- F('ternera','Ternera magra','prot','C',135,0,21,5,'crudo',0.7,80,200,10,120,'b'),
- F('merluza','Merluza','prot','CN',75,0,16.5,1,'crudo',0.85,100,300,10,180,'b'),
- F('salmon','Salmón','prot','CN',200,0,20,13,'crudo',0.8,80,180,10,120,'b'),
- F('atun','Atún al natural (lata)','prot','ACMN',105,0,24,1,'listo',null,50,160,10,80,'b',52,['lata','latas']),
- F('huevo','Huevo','prot','DACN',143,0.7,12.5,10,'listo',null,60,180,60,120,'b',60,['huevo','huevos']),
- F('tofu','Tofu','prot','CN',125,1.5,13,7,'listo',null,80,200,10,120,'b'),
- F('jamon','Jamón cocido extra','prot','ADMN',105,1,18,3,'listo',null,30,90,15,45,'b',15,['loncha','lonchas']),
- // Verduras
- F('ensalada','Ensalada mixta','veg','CN',17,3,1,0.2,'crudo',null,100,300,50,150,'b'),
- F('brocoli','Brócoli','veg','CN',34,3,2.8,0.4,'crudo',0.9,100,300,50,150,'b'),
- F('judias','Judías verdes','veg','CN',31,3.6,1.8,0.2,'crudo',0.9,100,300,50,150,'b'),
- F('calabacin','Calabacín','veg','CN',17,2.5,1.2,0.3,'crudo',0.9,100,300,50,150,'b'),
- F('espinacas','Espinacas','veg','CN',23,1.5,2.9,0.4,'crudo',0.6,100,300,50,150,'b'),
- F('pimiento','Pimiento','veg','CN',27,5,1,0.3,'crudo',0.8,100,300,50,150,'b'),
- F('coliflor','Coliflor','veg','CN',25,3,2,0.3,'crudo',0.9,100,300,50,150,'b'),
- F('champi','Champiñones','veg','CN',22,2.5,3,0.3,'crudo',0.75,100,300,50,150,'b'),
+ F('pollo','Pechuga de pollo','prot','CN',110,23,1.5,null,null,'crudo',0.75,80,220,10,140),
+ F('pavo','Pechuga de pavo','prot','CN',105,23,1.2,null,null,'crudo',0.75,80,220,10,140),
+ F('ternera','Ternera magra','prot','C',135,21,5,null,null,'crudo',0.7,80,200,10,120),
+ F('merluza','Merluza','prot','CN',75,16.5,1,null,null,'crudo',0.85,100,300,10,180),
+ F('bacalao','Bacalao fresco','prot','CN',82,18,0.7,null,null,'crudo',0.85,100,300,10,180),
+ F('salmon','Salmón','prot','CN',200,20,13,null,null,'crudo',0.8,80,180,10,120),
+ F('dorada','Dorada','prot','CN',120,20,4,null,null,'crudo',0.8,100,250,10,160),
+ F('atun','Atún al natural (lata)','prot','ACMN',105,24,1,null,null,'listo',null,50,160,10,80,52,['lata','latas']),
+ F('huevo','Huevo','prot','DACN',143,12.5,10,null,null,'listo',null,60,180,60,120,60,['huevo','huevos'],0.7),
+ F('tofu','Tofu','prot','CN',125,13,7,300,null,'listo',null,80,200,10,120),
+ F('seitan','Seitán','prot','CN',120,24,2,300,null,'listo',null,80,200,10,120),
+ F('surimi','Surimi (palitos de cangrejo)','prot','CMN',95,8,1,100,null,'listo',null,40,120,20,60,20,['palito','palitos']),
+ F('jamon','Jamón cocido extra','prot','ADMN',105,18,3,null,null,'listo',null,30,90,15,45,15,['loncha','lonchas'],1),
+ // Hortalizas
+ F('ensalada','Ensalada mixta (lechuga y tomate)','veg','CN',17,1,0.2,300,15,'crudo',null,100,300,50,150),
+ F('tomate','Tomate','veg','CN',18,0.9,0.2,300,30,'crudo',null,100,300,50,150),
+ F('pepino','Pepino','veg','CN',12,0.7,0.1,300,15,'crudo',null,100,300,50,150),
+ F('zanahoria','Zanahoria cruda','veg','CN',36,0.9,0.2,150,30,'crudo',null,100,300,50,150),
+ F('brocoli','Brócoli','veg','CN',34,2.8,0.4,300,15,'crudo',0.9,100,300,50,150),
+ F('coliflor','Coliflor','veg','CN',25,2,0.3,300,15,'crudo',0.9,100,300,50,150),
+ F('calabacin','Calabacín','veg','CN',17,1.2,0.3,300,15,'crudo',0.9,100,300,50,150),
+ F('berenjena','Berenjena','veg','CN',24,1,0.2,300,20,'crudo',0.85,100,300,50,150),
+ F('judias','Judía verde','veg','CN',31,1.8,0.2,250,30,'crudo',0.9,100,300,50,150),
+ F('champi','Champiñones','veg','CN',22,3,0.3,null,15,'crudo',0.75,100,300,50,150,null,null,2),
+ F('espinacas','Espinacas','veg','CN',23,2.9,0.4,null,15,'crudo',0.6,100,300,50,150,null,null,1.5),
+ F('acelga','Acelgas','veg','CN',19,1.8,0.2,300,15,'crudo',0.6,100,300,50,150),
+ F('esparrago','Espárrago verde','veg','CN',20,2.2,0.2,500,15,'crudo',0.9,100,300,50,150),
+ F('alcachofa','Alcachofa','veg','CN',22,2.7,0.1,300,20,'crudo',0.8,100,300,50,150),
+ F('puerro','Puerro','veg','CN',31,2,0.3,300,15,'crudo',0.8,100,300,50,150),
+ F('repollo','Repollo','veg','CN',25,1.3,0.1,300,15,'crudo',0.85,100,300,50,150),
+ F('pimiento','Pimiento rojo o verde','veg','CN',27,1,0.3,300,15,'crudo',0.8,100,300,50,150),
+ F('calabaza','Calabaza','veg','CN',28,1,0.1,200,75,'crudo',0.9,100,300,50,150),
  // Fruta
- F('manzana','Manzana','fruit','DACMN',52,12,0.3,0.2,'crudo',null,100,250,50,150,'b',150,['pieza','piezas']),
- F('pera','Pera','fruit','DACMN',57,12.5,0.4,0.1,'crudo',null,100,250,50,160,'b',160,['pieza','piezas']),
- F('naranja','Naranja','fruit','DACMN',47,9.4,0.9,0.1,'crudo',null,100,300,50,180,'b',180,['pieza','piezas']),
- F('mandarina','Mandarina','fruit','DACMN',46,10,0.7,0.2,'crudo',null,80,240,40,80,'b',80,['pieza','piezas']),
- F('fresas','Fresas','fruit','DACMN',32,6,0.7,0.3,'crudo',null,100,300,50,150,'b'),
- F('kiwi','Kiwi','fruit','DACMN',61,12,1.1,0.5,'crudo',null,80,240,80,80,'b',80,['pieza','piezas']),
- F('melon','Melón','fruit','DACMN',34,7,0.8,0.2,'crudo',null,100,300,50,150,'m'),
- F('platano','Plátano','fruit','DAM',90,20,1.1,0.3,'crudo',null,50,120,10,100,'m',100,['pieza','piezas']),
+ F('manzana','Manzana','fruit','DACMN',52,0.3,0.2,100,35,'crudo',null,100,300,50,150,200,PU),
+ F('pera','Pera','fruit','DACMN',57,0.4,0.1,100,30,'crudo',null,100,300,50,150,200,PU),
+ F('naranja','Naranja','fruit','DACMN',47,0.9,0.1,100,35,'crudo',null,100,300,50,150,200,PU),
+ F('mandarina','Mandarina','fruit','DACMN',46,0.7,0.2,100,30,'crudo',null,100,300,50,100,100,PU),
+ F('kiwi','Kiwi','fruit','DACMN',61,1.1,0.5,100,50,'crudo',null,100,300,50,100,100,PU),
+ F('melocoton','Melocotón','fruit','DACMN',39,0.9,0.1,100,35,'crudo',null,100,300,50,150,200,PU),
+ F('nectarina','Nectarina','fruit','DACMN',44,1,0.1,100,35,'crudo',null,100,300,50,100,100,PU),
+ F('albaricoque','Albaricoque','fruit','DACMN',43,0.9,0.1,150,30,'crudo',null,100,300,50,150,50,PU),
+ F('ciruela','Ciruela','fruit','DACMN',44,0.7,0.2,100,35,'crudo',null,100,300,50,100,50,PU),
+ F('cereza','Cereza','fruit','DACMN',63,1,0.3,100,25,'crudo',null,100,300,50,100),
+ F('arandano','Arándanos','fruit','DACMN',57,0.7,0.3,100,25,'crudo',null,50,200,25,100),
+ F('frambuesa','Frambuesas','fruit','DACMN',43,1.2,0.5,150,25,'crudo',null,100,300,50,150),
+ F('fresas','Fresas','fruit','DACMN',32,0.7,0.3,200,25,'crudo',null,100,300,50,150),
+ F('uva','Uva','fruit','DACMN',70,0.7,0.2,50,45,'crudo',null,50,150,25,100),
+ F('pina','Piña','fruit','DACMN',50,0.5,0.1,100,45,'crudo',null,100,300,50,100),
+ F('mango','Mango','fruit','DACMN',60,0.8,0.4,100,50,'crudo',null,100,300,50,100),
+ F('melon','Melón','fruit','DACMN',34,0.8,0.2,200,60,'crudo',null,100,300,50,150),
+ F('sandia','Sandía','fruit','DACMN',30,0.6,0.2,200,75,'crudo',null,100,300,50,200),
+ F('platano','Plátano','fruit','DAM',90,1.1,0.3,50,50,'crudo',null,50,150,50,100,100,PU),
  // Lácteos y bebidas
- F('cafeleche','Café con leche (leche semidesnatada)','dairy','DAM',23,2.4,1.65,0.8,'listo',null,200,400,200,200,'b',200,['taza','tazas']),
- F('leche','Leche semidesnatada','dairy','DAM',46,4.8,3.3,1.6,'listo',null,150,300,50,200,'b',200,['vaso','vasos']),
- F('yogur','Yogur natural edulcorado (sin azúcar)','dairy','DACMN',47,5,4.2,1.7,'listo',null,125,250,125,125,'b',125,['yogur','yogures']),
- F('griego','Yogur griego 0 % natural','dairy','DACMN',55,4,9.5,0.3,'listo',null,125,250,125,125,'b',125,['yogur','yogures']),
- F('quesobatido','Queso fresco batido 0 %','dairy','DAMN',46,3.5,8,0.2,'listo',null,100,250,25,125,'b'),
+ F('cafeleche','Café con leche (leche semidesnatada)','dairy','DAM',23,1.65,0.8,null,30,'listo',null,200,400,200,200,200,TZ,2.5),
+ F('leche','Leche semidesnatada','dairy','DAM',46,3.3,1.6,200,30,'listo',null,150,300,50,200,200,VS),
+ F('lechedesn','Leche desnatada','dairy','DAM',34,3.4,0.2,200,32,'listo',null,150,300,50,200,200,VS),
+ F('yogur','Yogur natural edulcorado (sin azúcar)','dairy','DACMN',47,4.2,1.7,200,35,'listo',null,125,250,125,125,125,YG),
+ F('griego','Yogur griego 0 % natural','dairy','DACMN',55,9.5,0.3,null,35,'listo',null,125,250,125,125,125,YG,4),
+ F('yogurfruta','Yogur desnatado de sabores o fruta','dairy','DAM',50,4,0.2,150,35,'listo',null,125,250,125,125,125,YG),
+ F('kefir','Kéfir','dairy','DAM',50,3.5,2.5,200,35,'listo',null,100,300,100,200),
+ F('cuajada','Cuajada','dairy','DAMN',90,5.5,5.5,175,35,'listo',null,125,250,125,125,125,['unidad','unidades']),
+ F('quesobatido','Queso fresco batido 0 %','dairy','DAMN',46,8,0.2,null,35,'listo',null,100,250,25,125,null,null,3.5),
+ F('bebidasoja','Bebida de soja','dairy','DAM',40,3.5,1.8,250,30,'listo',null,150,300,50,200,200,VS),
+ F('bebidaalmendra','Bebida de almendra','dairy','DAM',30,0.7,1.6,200,35,'listo',null,150,300,50,200,200,VS),
+ F('bebidaavena','Bebida de avena','dairy','DAM',45,0.8,1.5,200,35,'listo',null,150,300,50,200,200,VS),
  // Grasas y frutos secos
- F('aove','Aceite de oliva virgen extra','fat','DCN',884,0,0,100,'listo',null,5,20,5,10,'b',10,['cucharada','cucharadas']),
- F('aguacate','Aguacate','fat','DACMN',160,2,2,15,'crudo',null,30,100,10,50,'b'),
- F('nueces','Nueces','fat','ADMN',650,4,15,65,'listo',null,10,40,5,20,'b'),
- F('almendras','Almendras','fat','ADMN',580,5.5,21,50,'listo',null,10,40,5,20,'b'),
+ F('aove','Aceite de oliva virgen extra','fat','DCN',884,0,100,null,null,'listo',null,5,20,5,10,10,['cucharada','cucharadas']),
+ F('aguacate','Aguacate','fat','DACMN',160,2,15,160,10,'crudo',null,30,100,10,50),
+ F('aceitunas','Aceitunas','fat','ACMN',150,1,14,250,15,'listo',null,25,100,25,50),
+ F('nueces','Nueces','fat','ADMN',650,15,65,300,15,'listo',null,10,40,5,20),
+ F('almendras','Almendras','fat','ADMN',600,21,52,150,15,'listo',null,10,40,5,20),
+ F('avellanas','Avellanas','fat','ADMN',650,15,63,150,15,'listo',null,10,40,5,20),
+ F('cacahuete','Cacahuetes','fat','ADMN',590,26,50,100,15,'listo',null,10,40,5,20),
+ F('pistachos','Pistachos','fat','ADMN',580,20,45,80,15,'listo',null,10,40,5,20),
+ F('pipas','Pipas de girasol','fat','ADMN',580,21,48,80,35,'listo',null,10,40,5,20),
+ F('pinones','Piñones','fat','ADMN',670,14,68,300,15,'listo',null,10,40,5,15),
+ // --- Ampliación con la 3.ª edición de la tabla (web de la Fundación) ---
+ // Cereales, legumbres y tubérculos
+ F('altramuz','Altramuces','carb','ACMN',120,16,3,50,15,'listo',null,30,150,10,60,30,['tapa','tapas']),
+ F('arrozsalvaje','Arroz salvaje','carb','CN',350,14,1.1,13,35,'crudo',2.62,30,100,5,50),
+ F('centenog','Centeno en grano','carb','CN',335,10,1.6,15,45,'crudo',2.53,30,100,5,50),
+ F('mijo','Mijo','carb','CN',360,11,4,15,70,'crudo',3.53,30,100,5,50),
+ F('trigotierno','Trigo tierno','carb','CN',340,12,2,16,54,'crudo',2.44,30,100,5,50),
+ F('sojaseca','Soja seca (judía de soja)','carb','CN',400,36,18,30,15,'crudo',3.33,30,100,5,50),
+ F('fideosarroz','Fideos de arroz (hervidos)','carb','CN',110,1,0.2,50,50,'listo',null,100,300,25,150),
+ F('pastahuevo','Pasta al huevo','carb','CN',370,14,3,16,null,'crudo',null,30,110,5,55),
+ F('maiz','Maíz en lata','carb','CMN',100,3,1.2,50,65,'listo',null,50,200,25,100),
+ F('maizsin','Maíz en lata sin azúcar añadido','carb','CMN',80,2.5,1.2,90,null,'listo',null,50,200,25,100),
+ F('garbanzoconserva','Garbanzos en conserva','carb','CN',120,7,2.5,70,35,'listo',null,75,300,25,150),
+ F('lentejasconserva','Lentejas en conserva','carb','CN',100,7,0.5,70,35,'listo',null,75,300,25,150),
+ F('alubiasconserva','Judías blancas en conserva','carb','CN',95,6.5,0.5,70,35,'listo',null,75,300,25,150),
+ F('galletasin','Galletas sin azúcar','carb','DM',430,7,12,18,50,'listo',null,7,42,7,21,7,['galleta','galletas']),
+ F('galletadig','Galletas tipo digestiva','carb','DM',470,7,20,16,65,'listo',null,11,44,11,22,11,['galleta','galletas']),
+ F('biscote','Pan tostado o biscote','carb','DAMN',390,11,5,15,70,'listo',null,10,60,10,30,10,['biscote','biscotes']),
+ F('panmolde','Pan de molde','carb','DAMN',265,8,3,20,85,'listo',null,25,100,25,50,25,RB),
+ F('fajita','Tortilla de trigo (fajita)','carb','CN',300,8,7,20,null,'listo',null,40,160,40,80,40,['unidad','unidades']),
+ F('patataasada','Patata al horno o asada','carb','CN',95,2.5,0.1,35,62,'listo',null,80,250,10,120),
+ F('edamame','Edamame','carb','CMN',120,11,5,100,35,'listo',null,50,200,25,100),
+ // Proteínas
+ F('tortillapatatas','Tortilla de patatas','prot','CN',190,6,13,120,null,'listo',null,100,200,25,100),
+ // Hortalizas
+ F('apio','Apio','veg','CN',16,0.7,0.2,500,15,'crudo',null,100,300,50,150),
+ F('borraja','Borraja','veg','CN',20,1.8,0.2,300,15,'crudo',0.8,100,300,50,150),
+ F('cardo','Cardo','veg','CN',17,0.6,0.1,300,15,'crudo',0.85,100,300,50,150),
+ F('cebolla','Cebolla','veg','CN',33,1.2,0.1,150,15,'crudo',0.85,30,150,30,60),
+ F('endibia','Endibia','veg','CN',17,1,0.1,300,15,'crudo',null,100,300,50,150),
+ F('escarola','Escarola','veg','CN',20,1.3,0.2,null,15,'crudo',null,100,300,50,150,null,null,1.5),
+ F('lombarda','Lombarda','veg','CN',25,1.5,0.2,null,15,'crudo',0.85,100,300,50,150,null,null,3.5),
+ F('berza','Berza','veg','CN',30,3,0.5,null,15,'crudo',0.7,100,300,50,150,null,null,3),
+ F('berro','Berros','veg','CN',20,2.3,0.1,null,15,'crudo',null,50,200,50,100,null,null,1),
+ F('bruselas','Coles de Bruselas','veg','CN',43,3.4,0.3,300,15,'crudo',0.9,100,300,50,150),
+ F('nabo','Nabo','veg','CN',28,0.9,0.1,300,30,'crudo',0.9,100,300,50,150),
+ F('rabano','Rábano','veg','CN',14,0.6,0.1,300,15,'crudo',null,50,200,50,100),
+ F('remolacha','Remolacha','veg','CN',43,1.6,0.2,150,30,'crudo',null,30,150,30,60),
+ F('setas','Setas','veg','CN',25,3,0.4,300,15,'crudo',0.75,100,300,50,150),
+ F('esparragob','Espárrago blanco en conserva','veg','CN',20,2,0.2,300,15,'listo',null,100,300,50,150),
+ F('brotessoja','Brotes de soja','veg','CN',30,3,0.2,300,15,'crudo',null,100,300,50,150),
+ F('palmitos','Palmitos','veg','CN',28,2.5,0.6,200,20,'listo',null,50,200,50,100),
+ F('gazpacho','Gazpacho comercial','veg','CN',40,0.8,2.5,150,null,'listo',null,150,400,50,200,200,VS),
+ // Fruta
+ F('caqui','Caqui (persimón)','fruit','DACMN',70,0.6,0.2,65,null,'crudo',null,75,300,25,150,150,PU),
+ F('chirimoya','Chirimoya','fruit','DACMN',75,1.3,0.5,50,35,'crudo',null,50,200,50,100),
+ F('granada','Granada','fruit','DACMN',70,1,0.3,70,35,'crudo',null,50,200,25,100,175,PU),
+ F('higos','Higos','fruit','DACMN',74,0.8,0.3,100,35,'crudo',null,50,200,50,100,50,['higo','higos']),
+ F('litchi','Litchis','fruit','DACMN',66,0.8,0.4,70,50,'crudo',null,70,210,35,70),
+ F('membrillo','Membrillo','fruit','DACMN',45,0.4,0.1,150,35,'crudo',null,100,300,50,150),
+ F('moras','Moras','fruit','DACMN',43,1.4,0.5,150,25,'crudo',null,100,300,50,150),
+ F('nispero','Nísperos','fruit','DACMN',47,0.4,0.2,100,55,'crudo',null,66,198,33,99,33,['níspero','nísperos']),
+ F('papaya','Papaya','fruit','DACMN',40,0.5,0.1,125,55,'crudo',null,100,300,50,150),
+ F('paraguayo','Paraguayo','fruit','DACMN',55,1,0.1,100,35,'crudo',null,100,300,50,100,100,PU),
+ F('grosella','Grosellas','fruit','DACMN',35,1,0.2,200,25,'crudo',null,100,300,50,150),
+ F('grosellanegra','Grosella negra','fruit','DACMN',65,1.4,0.4,140,15,'crudo',null,70,210,35,105),
+ // Lácteos y bebidas
+ F('quesofresco','Queso fresco','dairy','DAMN',120,9,8,250,35,'listo',null,50,200,25,70,70,['tarrina','tarrinas']),
+ F('petitsuisse','Queso tipo Petit Suisse','dairy','DAM',125,8,7,75,40,'listo',null,50,150,50,50,50,['unidad','unidades']),
+ F('lecheentera','Leche entera','dairy','DAM',65,3.1,3.6,200,27,'listo',null,150,300,50,200,200,VS),
+ F('lechesinlactosa','Leche sin lactosa (semidesnatada)','dairy','DAM',46,3.3,1.6,200,null,'listo',null,150,300,50,200,200,VS),
+ F('yogurentero','Yogur entero de sabores o fruta','dairy','DAM',90,3.5,2.8,70,35,'listo',null,125,250,125,125,125,YG),
+ F('bebidacacao','Bebida de cacao','dairy','DAM',70,3,1.5,100,34,'listo',null,150,300,50,200,200,VS),
+ F('zumotomate','Zumo de tomate','dairy','ACMN',17,0.8,0.1,200,35,'listo',null,100,300,100,200,200,VS),
+ // Grasas, frutos secos y fruta seca
+ F('almendratostada','Almendras tostadas','fat','ADMN',620,21,55,140,15,'listo',null,10,40,5,20),
+ F('cremacacahuete','Crema de cacahuete','fat','ADM',600,25,50,100,40,'listo',null,10,40,10,20,20,['cucharada','cucharadas']),
+ F('albaricoqueseco','Orejones (albaricoque seco)','fat','AM',240,3.4,0.5,15,35,'listo',null,15,60,15,30,5,['unidad','unidades']),
+ F('ciruelapasa','Ciruelas pasas','fat','AM',240,2.2,0.4,15,40,'listo',null,16,48,8,24,8,['unidad','unidades']),
+ F('higoseco','Higos secos','fat','AM',250,3.3,1,15,40,'listo',null,16,48,8,24,8,['unidad','unidades']),
+ F('uvapasa','Uvas pasas','fat','AM',300,3,0.5,15,65,'listo',null,15,45,15,15),
+ F('datilseco','Dátiles secos','fat','AM',280,2.5,0.4,15,70,'listo',null,10,30,10,20,10,['dátil','dátiles']),
+ F('chocolatenegro','Chocolate negro','fat','AM',540,7,38,25,20,'listo',null,8,32,8,16,8,['pastilla','pastillas']),
 ];
 const byId=Object.fromEntries(FOODS.map(f=>[f.id,f]));
+const isHigh=f=>f.gi!=null&&f.gi>=70;
+const foodsOf=c=>FOODS.filter(f=>f.cat===c).sort((a,b)=>a.n.localeCompare(b.n,'es'));
 
 /* Plantillas por toma: cada hueco admite categorías y tiene probabilidad de aparecer */
 const TPL={
@@ -149,18 +283,48 @@ const TPL={
 };
 
 /* ============ ESTADO ============ */
-const DEFAULTS={kcal:1800,carbPct:45,kshare:[20,10,35,10,25],cshare:[20,10,30,10,30],allowHigh:false,veto:[],pins:[],plan:null,day:0,tab:'week',stale:false};
+const REC_SHARE=[.23,.11,.33,.11,.22];
+const DEFAULTS={kcal:1800,carbPct:40,kshare:[20,10,35,10,25],racs:[4,2,6,2,4],allowHigh:false,veto:[],pins:[],plan:null,day:0,tab:'week',stale:false};
 let S=JSON.parse(JSON.stringify(DEFAULTS));
 let draft={food:'cafeleche',meals:[0,1],days:[0,1,2,3,4,5,6],mode:'fixed',g:200};
 
-function save(){try{localStorage.setItem('menuHC',JSON.stringify(S))}catch(e){}}
-function load(){try{const r=localStorage.getItem('menuHC');if(r)S=Object.assign(S,JSON.parse(r))}catch(e){}}
+function save(){try{localStorage.setItem('menuHC2',JSON.stringify(S))}catch(e){}}
+function planValid(p){
+  return Array.isArray(p)&&p.length===7&&p.every(d=>d&&Array.isArray(d.meals)&&d.meals.length===5&&d.meals.every(m=>m.items.every(i=>byId[i.id])));
+}
+function load(){
+  try{
+    let r=localStorage.getItem('menuHC2');
+    let old=false;
+    if(!r){r=localStorage.getItem('menuHC');old=!!r}
+    if(!r)return;
+    const o=JSON.parse(r);
+    if(old){ // migración desde la versión anterior: se conservan ajustes, fijados y vetos
+      ['kcal','kshare','allowHigh'].forEach(k=>{if(o[k]!=null)S[k]=o[k]});
+      S.pins=(o.pins||[]).filter(p=>byId[p.foodId]);
+      S.veto=(o.veto||[]).filter(id=>byId[id]);
+    }else{
+      Object.assign(S,o);
+      S.pins=(S.pins||[]).filter(p=>byId[p.foodId]);
+      S.veto=(S.veto||[]).filter(id=>byId[id]);
+      if(!Array.isArray(S.racs)||S.racs.length!==5)S.racs=DEFAULTS.racs.slice();
+      if(!planValid(S.plan))S.plan=null;
+    }
+  }catch(e){}
+}
 
 /* ============ CÁLCULO ============ */
 const sum=a=>a.reduce((x,y)=>x+y,0);
 const share=(arr,i)=>{const t=sum(arr);return t>0?arr[i]/t:1/arr.length};
 const fmt=(n,d=0)=>n.toLocaleString('es-ES',{minimumFractionDigits:d,maximumFractionDigits:d});
-function targets(mi){return{k:S.kcal*share(S.kshare,mi),hc:S.kcal*S.carbPct/100/4*share(S.cshare,mi)}}
+function targets(mi){return{k:S.kcal*share(S.kshare,mi),hc:S.racs[mi]*10}}
+function recRacs(){
+  const total=S.kcal*S.carbPct/100/40;
+  return REC_SHARE.map((s,i)=>{
+    const cap=(i===1||i===3)?3:6;
+    return Math.min(cap,Math.max(1,Math.round(total*s*2)/2));
+  });
+}
 function nut(f,g){const r=g/100;return{k:f.k*r,c:f.c*r,p:f.p*r,f:f.f*r}}
 function evalItems(items,tg){
   let k=0,c=0,p=0,f=0;
@@ -189,7 +353,7 @@ function optimize(items,tg){
   return cur;
 }
 function pool(slot,meal,used,exclude){
-  const base=FOODS.filter(f=>slot.c.includes(f.cat)&&f.m.includes(meal)&&!S.veto.includes(f.id)&&!used.has(f.id)&&(S.allowHigh||f.gi!=='a'));
+  const base=FOODS.filter(f=>slot.c.includes(f.cat)&&f.m.includes(meal)&&!S.veto.includes(f.id)&&!used.has(f.id)&&(S.allowHigh||!isHigh(f)));
   const free=base.filter(f=>!exclude.has(f.id));
   return free.length?free:base;
 }
@@ -259,14 +423,28 @@ function dayTot(d){
   d.meals.forEach(m=>{t.k+=m.tot.k;t.c+=m.tot.c;t.p+=m.tot.p;t.f+=m.tot.f});
   return t;
 }
+/* Compra: suma de los 7 días, con el desglose por día */
+function weekTotals(){
+  const tot={},per={};
+  S.plan.forEach((d,di)=>d.meals.forEach(m=>m.items.forEach(i=>{
+    tot[i.id]=(tot[i.id]||0)+i.g;
+    per[i.id]=per[i.id]||{};
+    per[i.id][di]=(per[i.id][di]||0)+i.g;
+  })));
+  return{tot,per};
+}
 
 /* ============ TEXTOS ============ */
 function qty(f,g){
   let s;
-  if(f.fx)s=`${g} g en crudo · ≈ ${Math.round(g*f.fx/5)*5} g cocinado`;
-  else s=f.st==='crudo'?`${g} g (crudo)`:`${g} g`;
+  if(f.fx)s=`${fmt(g)} g en crudo · ≈ ${fmt(Math.round(g*f.fx/5)*5)} g cocinado`;
+  else s=f.st==='crudo'?`${fmt(g)} g (crudo)`:`${fmt(g)} g`;
   if(f.u){const n=Math.round(g/f.u*2)/2;s+=` · ≈ ${fmt(n,n%1?1:0)} ${n===1?f.un[0]:f.un[1]}`}
   return s;
+}
+function racText(f,g){
+  const r=nut(f,g).c/10;
+  return r<0.05?'sin hidratos':`${fmt(r,1)} ${fmt(r,1)==='1,0'?'ración':'raciones'}`;
 }
 function daysLabel(ds){
   if(ds.length===7)return 'todos los días';
@@ -279,67 +457,73 @@ function gauge(c,t){
   const pct=v=>(v/max*100).toFixed(1);
   let ticks='';
   for(let g=10;g<max;g+=10)ticks+=`<i style="left:${pct(g)}%"></i>`;
-  return `<div class="gauge" role="img" aria-label="Hidratos ${fmt(c)} g de ${fmt(t)} g objetivo"><div class="fill" style="width:${pct(c)}%"></div>${ticks}<b class="goal" style="left:${pct(t)}%"></b></div>
+  return `<div class="gauge" role="img" aria-label="Hidratos ${fmt(c/10,1)} raciones de ${fmt(t/10,1)} objetivo"><div class="fill" style="width:${pct(c)}%"></div>${ticks}<b class="goal" style="left:${pct(t)}%"></b></div>
   <div class="gcap"><span>cada marca = 1 ración (10 g)</span><span>línea = objetivo</span></div>`;
 }
 function viewWeek(){
   if(!S.plan)return '';
   const strip=S.plan.map((d,i)=>{const t=dayTot(d);
-    return `<button class="day ${i===S.day?'on':''}" onclick="setDay(${i})" aria-label="${DAYS[i]}"><span>${DAYS[i].slice(0,3)}</span><strong>${fmt(t.c)} g</strong><small>${fmt(t.k)} kcal</small></button>`}).join('');
+    return `<button class="day ${i===S.day?'on':''}" onclick="setDay(${i})" aria-label="${DAYS[i]}"><span>${DAYS[i].slice(0,3)}</span><strong>${fmt(t.c/10,1)} rac.</strong><small>${fmt(t.k)} kcal</small></button>`}).join('');
   const d=S.plan[S.day],t=dayTot(d);
   const meals=d.meals.map((m,mi)=>{
     const tg=targets(mi);
     const items=m.items.map(it=>{const f=byId[it.id];
-      return `<li><span>${f.n}${it.pin?'<em>fijado</em>':''}${f.gi==='a'?'<em class="hi">IG alto</em>':''}</span><span class="q">${qty(f,it.g)}</span></li>`}).join('');
+      return `<li><span>${f.n}${it.pin?'<em>fijado</em>':''}${isHigh(f)?'<em class="hi">IG alto</em>':''}</span><span class="q">${qty(f,it.g)}<span class="rac">${racText(f,it.g)}</span></span></li>`}).join('');
     return `<section class="meal">
       <div class="mhead"><h3>${MEALS[mi].n}</h3><button class="ghost" onclick="renewMeal(${S.day},${mi})">Renovar</button></div>
-      <div class="hc"><b>${fmt(m.tot.c)} g</b> de hidratos · ${fmt(m.tot.c/10,1)} raciones · objetivo ${fmt(tg.hc)} g</div>
+      <div class="hc"><b>${fmt(m.tot.c/10,1)} raciones</b> (${fmt(m.tot.c)} g de hidratos) · objetivo ${fmt(S.racs[mi],1)} raciones</div>
       ${gauge(m.tot.c,tg.hc)}
       <ul class="items">${items||'<li class="empty">Sin alimentos disponibles para esta toma. Revisa los vetos.</li>'}</ul>
       <div class="macros">${fmt(m.tot.k)} kcal (objetivo ${fmt(tg.k)}) · proteína ${fmt(m.tot.p)} g · grasa ${fmt(m.tot.f)} g</div>
     </section>`}).join('');
   return `<div class="strip">${strip}</div>
-    <p class="total"><b>${DAYS[S.day]}:</b> ${fmt(t.k)} kcal · <b>${fmt(t.c)} g</b> de hidratos (${fmt(t.c/10,1)} raciones) · proteína ${fmt(t.p)} g · grasa ${fmt(t.f)} g</p>
+    <p class="total"><b>${DAYS[S.day]}:</b> ${fmt(t.k)} kcal · <b>${fmt(t.c/10,1)} raciones</b> (${fmt(t.c)} g de hidratos) · proteína ${fmt(t.p)} g · grasa ${fmt(t.f)} g</p>
     ${meals}`;
 }
 function viewSettings(){
-  const rows=MEALS.map((m,i)=>{const tg=targets(i);
+  const totR=sum(S.racs), pctK=totR*40/S.kcal*100, rec=recRacs();
+  const rows=MEALS.map((m,i)=>{
+    const tg=targets(i);
+    const hi=(i===1||i===3)?S.racs[i]>3:S.racs[i]>6;
     return `<div class="row"><span>${m.n}</span>
-      <input type="number" min="0" max="100" value="${S.kshare[i]}" onchange="setShare('kshare',${i},this.value)" aria-label="% de calorías en ${m.n}">
-      <input type="number" min="0" max="100" value="${S.cshare[i]}" onchange="setShare('cshare',${i},this.value)" aria-label="% de hidratos en ${m.n}">
-      <small>${fmt(tg.k)} kcal · ${fmt(tg.hc)} g (${fmt(tg.hc/10,1)} rac.)</small></div>`}).join('');
-  const ks=sum(S.kshare),cs=sum(S.cshare);
-  const vetoes=CATS.map(([c,n])=>`<div class="vgroup">${n}</div><div class="chk">${FOODS.filter(f=>f.cat===c).map(f=>
+      <input type="number" min="0" max="100" value="${S.kshare[i]}" onchange="setShare(${i},this.value)" aria-label="% de calorías en ${m.n}">
+      <input type="number" min="0" max="12" step="0.5" value="${S.racs[i]}" onchange="setRac(${i},this.value)" aria-label="Raciones de hidratos en ${m.n}">
+      <small>${fmt(tg.k)} kcal · ${fmt(tg.hc)} g de HC${hi?' <span class="warn">· por encima de lo habitual</span>':''}</small></div>`}).join('');
+  const ks=sum(S.kshare);
+  const vetoes=CATS.map(([c,n])=>`<div class="vgroup">${n}</div><div class="chk">${foodsOf(c).map(f=>
     `<label><input type="checkbox" ${S.veto.includes(f.id)?'checked':''} onchange="toggleVeto('${f.id}')"> ${f.n}</label>`).join('')}</div>`).join('');
   return `<section class="card">
-    <h2>Objetivo diario</h2>
+    <h2>Calorías del día</h2>
     <label for="kc">Calorías al día</label>
     <input id="kc" type="number" min="1000" max="4000" step="50" value="${S.kcal}" onchange="setNum('kcal',this.value,1000,4000)">
-    <label for="cp">Hidratos sobre el total de calorías: ${S.carbPct} %</label>
-    <input id="cp" type="range" min="35" max="55" value="${S.carbPct}" onchange="setNum('carbPct',this.value,35,55)">
-    <p class="sub">Hoy equivale a ${fmt(S.kcal*S.carbPct/100/4)} g de hidratos al día (${fmt(S.kcal*S.carbPct/100/40,1)} raciones).</p>
   </section>
   <section class="card">
-    <h2>Reparto por toma</h2>
-    <p class="sub">Los hidratos van repartidos a lo largo del día para evitar picos. Ajusta los porcentajes a lo que indique su equipo médico o su dietista.</p>
-    <div class="row h"><span>Toma</span><span>% calorías</span><span>% hidratos</span><span>Objetivo resultante</span></div>
+    <h2>Raciones de hidratos por toma</h2>
+    <p class="sub">Una ración son 10 g de hidratos. Cada toma tiene su propio objetivo y puedes cambiarlo a mano.</p>
+    <div class="row h"><span>Toma</span><span>% calorías</span><span>Raciones</span><span>Resultado</span></div>
     ${rows}
-    ${ks!==100||cs!==100?`<p class="warn">Los porcentajes suman ${ks} % (calorías) y ${cs} % (hidratos). La app los ajusta proporcionalmente, pero conviene que sumen 100.</p>`:''}
+    <p class="total" style="margin-top:12px"><b>Total: ${fmt(totR,1)} raciones al día</b> (${fmt(totR*10)} g), un ${fmt(pctK)} % de las calorías.</p>
+    ${ks!==100?`<p class="warn">Los porcentajes de calorías suman ${ks} %. La app los ajusta proporcionalmente, pero conviene que sumen 100.</p>`:''}
+    <label for="cp">Referencia para las raciones aconsejadas: ${S.carbPct} % de las calorías en hidratos</label>
+    <input id="cp" type="range" min="35" max="50" value="${S.carbPct}" onchange="setNum('carbPct',this.value,35,50)">
+    <p class="sub">Con ${fmt(S.kcal)} kcal esto da ${rec.map((r,i)=>`${MEALS[i].n.toLowerCase()} ${fmt(r,1)}`).join(', ')}.</p>
+    <p><button class="ghost" onclick="applyRec()">Aplicar raciones aconsejadas</button></p>
+    <p class="sub">Como referencia general, suelen manejarse 3 a 6 raciones en las comidas principales y 1 a 3 en los tentempiés. Lo adecuado para cada persona lo fija su equipo médico o su dietista.</p>
   </section>
   <section class="card">
     <h2>Alimentos</h2>
-    <label style="display:flex;gap:8px;align-items:center;font-weight:400"><input type="checkbox" ${S.allowHigh?'checked':''} onchange="toggleHigh()"> Permitir alimentos de índice glucémico alto (patata)</label>
+    <label style="display:flex;gap:8px;align-items:center;font-weight:400"><input type="checkbox" ${S.allowHigh?'checked':''} onchange="toggleHigh()"> Permitir alimentos de índice glucémico alto (70 o más)</label>
     <details><summary>Vetar alimentos que no quiero ver</summary>${vetoes}</details>
   </section>
-  <p class="foot">Herramienta de apoyo para organizar comidas. Los objetivos de hidratos deben fijarlos su endocrino o dietista. La app no calcula dosis de insulina.</p>`;
+  <p class="foot">Herramienta de apoyo para organizar comidas. Hidratos e índice glucémico según la tabla de raciones de hidratos de carbono de la Fundación para la Diabetes (3.ª edición). Las calorías, proteínas y grasas son valores medios aproximados. La app no calcula dosis de insulina.</p>`;
 }
 function viewPins(){
-  const opts=CATS.map(([c,n])=>`<optgroup label="${n}">${FOODS.filter(f=>f.cat===c).map(f=>`<option value="${f.id}" ${draft.food===f.id?'selected':''}>${f.n}</option>`).join('')}</optgroup>`).join('');
+  const opts=CATS.map(([c,n])=>`<optgroup label="${n}">${foodsOf(c).map(f=>`<option value="${f.id}" ${draft.food===f.id?'selected':''}>${f.n}</option>`).join('')}</optgroup>`).join('');
   const meals=MEALS.map((m,i)=>`<label><input type="checkbox" ${draft.meals.includes(i)?'checked':''} onchange="dMeal(${i})"> ${m.n}</label>`).join('');
   const days=DAYS.map((d,i)=>`<label><input type="checkbox" ${draft.days.includes(i)?'checked':''} onchange="dDay(${i})"> ${d.slice(0,3)}</label>`).join('');
   const f=byId[draft.food];
   const list=S.pins.map(p=>{const pf=byId[p.foodId];
-    return `<div class="pin"><div><strong>${pf.n}</strong><small>${p.meals.map(i=>MEALS[i].n).join(' o ')} · ${daysLabel(p.days)} · ${p.grams!=null?qty(pf,p.grams):'cantidad calculada por la app'}</small></div><button class="ghost" onclick="delPin('${p.id}')">Quitar</button></div>`}).join('');
+    return `<div class="pin"><div><strong>${pf.n}</strong><small>${p.meals.map(i=>MEALS[i].n).join(' o ')} · ${daysLabel(p.days)} · ${p.grams!=null?qty(pf,p.grams)+' · '+racText(pf,p.grams):'cantidad calculada por la app'}</small></div><button class="ghost" onclick="delPin('${p.id}')">Quitar</button></div>`}).join('');
   return `<section class="card">
     <h2>Fijar un alimento</h2>
     <p class="sub">La app lo coloca en la toma que elijas y calcula el resto alrededor de él.</p>
@@ -352,27 +536,28 @@ function viewPins(){
       <label><input type="radio" name="mode" ${draft.mode==='fixed'?'checked':''} onchange="dMode('fixed')"> Cantidad fija</label>
       <label><input type="radio" name="mode" ${draft.mode==='free'?'checked':''} onchange="dMode('free')"> La calcula la app</label>
     </div>
-    ${draft.mode==='fixed'?`<label for="pg">Gramos${f.u?` (1 ${f.un[0]} ≈ ${f.u} g)`:''}</label><input id="pg" type="number" min="1" step="5" value="${draft.g}" onchange="draft.g=+this.value||${f.def}">`:''}
+    ${draft.mode==='fixed'?`<label for="pg">Gramos${f.u?` (1 ${f.un[0]} ≈ ${f.u} g)`:''}</label><input id="pg" type="number" min="1" step="5" value="${draft.g}" onchange="draft.g=+this.value||${f.def};render()"><p class="sub">${racText(f,Number(draft.g)||f.def)}</p>`:''}
     <p><button class="btn" onclick="addPin()">Añadir alimento fijado</button></p>
   </section>
   <section class="card"><h2>Alimentos fijados</h2>${list||'<p class="empty">Todavía no has fijado ninguno. Prueba con el café con leche del desayuno.</p>'}</section>`;
 }
 function viewShop(){
   if(!S.plan)return '';
-  const tot={};
-  S.plan.forEach(d=>d.meals.forEach(m=>m.items.forEach(i=>tot[i.id]=(tot[i.id]||0)+i.g)));
+  const {tot,per}=weekTotals();
   const groups=CATS.map(([c,n])=>{
-    const rows=FOODS.filter(f=>f.cat===c&&tot[f.id]).map(f=>`<li><span>${f.n}</span><span class="q">${qty(f,tot[f.id])}</span></li>`).join('');
+    const rows=foodsOf(c).filter(f=>tot[f.id]).map(f=>{
+      const dd=Object.keys(per[f.id]).map(Number).sort((a,b)=>a-b).map(di=>`${DAYS[di].slice(0,3)} ${fmt(per[f.id][di])} g`).join(' · ');
+      return `<li><span>${f.n}<span class="d">${dd}</span></span><span class="q">${qty(f,tot[f.id])}</span></li>`}).join('');
     return rows?`<section class="card"><h2>${n}</h2><ul class="items">${rows}</ul></section>`:'';
   }).join('');
-  return `<p class="sub" style="margin-bottom:12px">Total de la semana. Las cantidades con estado van en crudo, tal como se compran.</p>${groups}`;
+  return `<div class="shophead"><p class="sub">Compra de la semana completa (lunes a domingo). Los pesos con estado van en crudo, tal como se compran. Bajo cada alimento, lo que se usa cada día.</p><button class="ghost" onclick="copyShop()">Copiar lista</button></div>${groups}`;
 }
 function render(){
   const tabs=[['week','Semana'],['settings','Objetivos'],['pins','Fijados'],['shop','Compra']];
   const views={week:viewWeek,settings:viewSettings,pins:viewPins,shop:viewShop};
   document.querySelector('#app').innerHTML=`
     <header>
-      <div><h1>Menú semanal</h1><p class="sub">Cinco tomas al día, con los hidratos de cada una</p></div>
+      <div><h1>Menú semanal</h1><p class="sub">Cinco tomas al día, contadas en raciones de hidratos</p></div>
       <button class="btn" onclick="regen()">Generar semana nueva</button>
     </header>
     <nav>${tabs.map(([k,n])=>`<button class="${S.tab===k?'on':''}" onclick="setTab('${k}')">${n}</button>`).join('')}</nav>
@@ -386,7 +571,9 @@ function setDay(i){S.day=i;save();render()}
 function regen(){genWeek();S.tab='week';render()}
 function clamp(v,a,b){v=Number(v);if(isNaN(v))v=a;return Math.min(b,Math.max(a,v))}
 function setNum(k,v,a,b){S[k]=clamp(v,a,b);S.stale=true;save();render()}
-function setShare(k,i,v){S[k][i]=clamp(v,0,100);S.stale=true;save();render()}
+function setShare(i,v){S.kshare[i]=clamp(v,0,100);S.stale=true;save();render()}
+function setRac(i,v){S.racs[i]=Math.round(clamp(v,0,12)*2)/2;S.stale=true;save();render()}
+function applyRec(){S.racs=recRacs();S.stale=true;save();render()}
 function toggleHigh(){S.allowHigh=!S.allowHigh;S.stale=true;save();render()}
 function toggleVeto(id){const i=S.veto.indexOf(id);i>=0?S.veto.splice(i,1):S.veto.push(id);S.stale=true;save();render()}
 function dFood(id){draft.food=id;draft.g=byId[id].u||byId[id].def;render()}
@@ -399,10 +586,21 @@ function addPin(){
   S.stale=true;save();render();
 }
 function delPin(id){S.pins=S.pins.filter(p=>p.id!==id);S.stale=true;save();render()}
+function copyShop(){
+  const {tot}=weekTotals();
+  const lines=CATS.flatMap(([c,n])=>{
+    const rows=foodsOf(c).filter(f=>tot[f.id]).map(f=>`- ${f.n}: ${fmt(tot[f.id])} g${f.st==='crudo'?' (crudo)':''}`);
+    return rows.length?[n+':',...rows,'']:[];
+  });
+  const text='Compra de la semana\n\n'+lines.join('\n');
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    navigator.clipboard.writeText(text).then(()=>alert('Lista copiada.'),()=>alert(text));
+  }else alert(text);
+}
 
 /* ============ ARRANQUE ============ */
 load();
-if(!S.plan||S.plan.length!==7)genWeek();
+if(!S.plan)genWeek();
 render();
 </script>
 </body>
