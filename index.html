@@ -29,7 +29,8 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid 
 .btn{background:var(--ink);color:var(--field);border:0;border-radius:8px;padding:10px 16px;font:inherit;font-weight:600;cursor:pointer}
 .ghost{background:none;color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:6px 12px;font:inherit;cursor:pointer}
 .ghost:hover{border-color:var(--carb)}
-.banner{background:var(--carb-soft);border-radius:8px;padding:10px 14px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+.banner{position:fixed;left:12px;right:12px;bottom:12px;max-width:736px;margin:0 auto;z-index:10;background:var(--carb-soft);border:1px solid var(--carb);border-radius:10px;padding:8px 12px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:nowrap;box-shadow:0 4px 16px rgba(0,0,0,.18)}
+.bannerpad{height:72px}
 .strip{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-bottom:16px}
 .day{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:8px 2px;text-align:center;font:inherit;color:var(--ink);cursor:pointer;display:flex;flex-direction:column;gap:1px}
 .day span{font-weight:650}
@@ -316,6 +317,7 @@ const defaultMembers=()=>[newMember('m1','Adulto 1',1800),newMember('m2','Adulto
 let S={members:defaultMembers(),allowHigh:false,veto:[],pins:[],plan:null,day:0,tab:'week',view:'all',setM:'m1',shopM:'all',stale:false};
 let draft={food:'cafeleche',meals:[0,1],days:[0,1,2,3,4,5,6],members:S.members.map(m=>m.id),mode:'fixed',g:200};
 
+let vetoOpen=false; // estado del desplegable de vetos (no se guarda)
 const getM=id=>S.members.find(m=>m.id===id);
 const curSet=()=>getM(S.setM)||S.members[0];
 
@@ -635,7 +637,7 @@ function viewSettings(){
   <section class="card">
     <h2>Alimentos (para toda la familia)</h2>
     <label style="display:flex;gap:8px;align-items:center;font-weight:400"><input type="checkbox" ${S.allowHigh?'checked':''} onchange="toggleHigh()"> Permitir alimentos de índice glucémico alto (70 o más)</label>
-    <details><summary>Vetar alimentos que no quiero ver</summary>${vetoes}</details>
+    <details ${vetoOpen?'open':''} ontoggle="vetoOpen=this.open"><summary>Vetar alimentos que no quiero ver${S.veto.length?` (${S.veto.length} vetados)`:''}</summary>${vetoes}</details>
   </section>
   <p class="foot">Herramienta de apoyo para organizar comidas. Hidratos e índice glucémico según la tabla de raciones de hidratos de carbono de la Fundación para la Diabetes (3.ª edición). Las calorías, proteínas y grasas son valores medios aproximados. La app no calcula dosis de insulina.</p>`;
 }
@@ -680,6 +682,7 @@ function viewShop(){
   return `${chips(S.shopM,'setShopM',true,'Toda la familia')}<div class="shophead"><p class="sub">Compra de la semana completa para ${who} (lunes a domingo). Los pesos con estado van en crudo, tal como se compran. Bajo cada alimento, lo que se usa cada día.</p><button class="ghost" onclick="copyShop()">Copiar lista</button></div>${groups}`;
 }
 function render(){
+  const y=typeof window!=='undefined'?window.scrollY:0;
   const tabs=[['week','Semana'],['settings','Miembros'],['pins','Fijados'],['shop','Compra']];
   const views={week:viewWeek,settings:viewSettings,pins:viewPins,shop:viewShop};
   document.querySelector('#app').innerHTML=`
@@ -688,8 +691,9 @@ function render(){
       <button class="btn" onclick="regen()">Generar semana nueva</button>
     </header>
     <nav>${tabs.map(([k,n])=>`<button class="${S.tab===k?'on':''}" onclick="setTab('${k}')">${n}</button>`).join('')}</nav>
-    ${S.stale?`<div class="banner"><span>Has cambiado alimentos fijados o vetos. El menú actual no los refleja.</span><button class="ghost" onclick="regen()">Generar semana nueva</button></div>`:''}
-    ${views[S.tab]()}`;
+    ${views[S.tab]()}
+    ${S.stale?`<div class="bannerpad"></div><div class="banner" role="status"><span>Cambios sin aplicar al menú</span><button class="ghost" onclick="regen()">Generar semana</button></div>`:''}`;
+  if(typeof window!=='undefined')window.scrollTo(0,y);
 }
 
 /* ============ ACCIONES ============ */
