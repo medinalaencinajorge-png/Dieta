@@ -75,6 +75,7 @@ summary{cursor:pointer;font-weight:600}
 .empty{color:var(--muted);padding:6px 0}
 .shophead{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px}
 @media (prefers-reduced-motion:no-preference){.gauge .fill{transition:width .3s}}
+@media (max-width:480px){nav button{padding:10px 8px}.day{padding:8px 0}.day strong{font-size:.82rem}}
 @media (max-width:560px){.row{grid-template-columns:1fr 1fr;} .row.h{display:none} .row small{grid-column:1/-1}}
 
 .chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px}
@@ -545,6 +546,11 @@ function gauge(c,t){
   return `<div class="gauge" role="img" aria-label="Hidratos ${fmt(c/10,1)} raciones de ${fmt(t/10,1)} objetivo"><div class="fill" style="width:${pct(c)}%"></div>${ticks}<b class="goal" style="left:${pct(t)}%"></b></div>
   <div class="gcap"><span>cada marca = 1 ración (10 g)</span><span>línea = objetivo</span></div>`;
 }
+function off(c,t){
+  const d=c-t;
+  if(Math.abs(d)<=5)return '';
+  return `<p class="warn" style="margin:8px 0 0;font-size:.88rem">Ajuste aproximado: ${d>0?'+':'−'}${fmt(Math.abs(d/10),1)} raciones sobre el objetivo. Pulsa Renovar o cambia el objetivo de esta toma.</p>`;
+}
 function memberBody(d,mem){
   const t=dayTot(d,mem.id);
   const meals=d.meals.map((m,mi)=>{
@@ -555,6 +561,7 @@ function memberBody(d,mem){
       <div class="mhead"><h3>${MEALS[mi].n}</h3><button class="ghost" onclick="renewMeal(${S.day},${mi})" title="Cambia los alimentos de esta toma para toda la familia">Renovar</button></div>
       <div class="hc"><b>${fmt(r.tot.c/10,1)} raciones</b> (${fmt(r.tot.c)} g de hidratos) · objetivo ${fmt(mem.racs[mi],1)} raciones</div>
       ${gauge(r.tot.c,tg.hc)}
+      ${off(r.tot.c,tg.hc)}
       <ul class="items">${items||'<li class="empty">Sin alimentos para esta toma. Revisa los vetos o los fijados.</li>'}</ul>
       <div class="macros">${fmt(r.tot.k)} kcal (objetivo ${fmt(tg.k)}) · proteína ${fmt(r.tot.p)} g · grasa ${fmt(r.tot.f)} g</div>
     </section>`}).join('');
@@ -563,7 +570,7 @@ function memberBody(d,mem){
 function familyBody(d){
   const totals=S.members.map(mem=>{const t=dayTot(d,mem.id);return `<span class="mq"><b>${esc(mem.name)}</b> ${fmt(t.k)} kcal · ${fmt(t.c/10,1)} rac.</span>`}).join('');
   const meals=d.meals.map((m,mi)=>{
-    const hc=S.members.map(mem=>`${esc(mem.name)} ${fmt(m.per[mem.id].tot.c/10,1)}/${fmt(mem.racs[mi],1)}`).join(' · ');
+    const hc=S.members.map(mem=>{const c=m.per[mem.id].tot.c,t=mem.racs[mi]*10;return `${esc(mem.name)} ${fmt(c/10,1)}/${fmt(mem.racs[mi],1)}${Math.abs(c-t)>5?' <span class="warn">(ajuste aproximado)</span>':''}`}).join(' · ');
     const items=m.items.map(it=>{const f=byId[it.id];
       const cells=S.members.filter(mem=>(m.per[mem.id].g[it.id]||0)>0).map(mem=>{const g=m.per[mem.id].g[it.id];
         return `<span class="mq"><b>${esc(mem.name)}</b> ${fmt(g)} g · ${racShort(f,g)}</span>`}).join('');
@@ -580,10 +587,10 @@ function viewWeek(){
   if(!S.plan)return '';
   const mem=getM(S.view);
   const strip=S.plan.map((d,i)=>{
-    const sub=mem?`<strong>${fmt(dayTot(d,mem.id).c/10,1)} rac.</strong><small>${fmt(dayTot(d,mem.id).k)} kcal</small>`:`<small>familia</small>`;
+    const sub=mem?`<strong>${fmt(dayTot(d,mem.id).c/10,1)}</strong><small>${fmt(dayTot(d,mem.id).k)}</small>`:`<small>familia</small>`;
     return `<button class="day ${i===S.day?'on':''}" onclick="setDay(${i})" aria-label="${DAYS[i]}"><span>${DAYS[i].slice(0,3)}</span>${sub}</button>`}).join('');
   const d=S.plan[S.day];
-  return `${chips(S.view,'setView',true)}<div class="strip">${strip}</div>${mem?memberBody(d,mem):familyBody(d)}`;
+  return `${chips(S.view,'setView',true)}<div class="strip">${strip}</div>${mem?'<p class="sub" style="margin:-8px 0 12px;font-size:.78rem">Cada día: raciones de hidratos (arriba) y kcal (abajo)</p>':''}${mem?memberBody(d,mem):familyBody(d)}`;
 }
 function viewSettings(){
   const mem=curSet();
