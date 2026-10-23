@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Menú semanal por raciones de hidratos</title>
+<title>Menú familiar por raciones de hidratos</title>
 <style>
 :root{
   --field:#EAF0EC; --panel:#FFFFFF; --ink:#16302B; --muted:#5B706A; --line:#D3DED8;
@@ -76,6 +76,16 @@ summary{cursor:pointer;font-weight:600}
 .shophead{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px}
 @media (prefers-reduced-motion:no-preference){.gauge .fill{transition:width .3s}}
 @media (max-width:560px){.row{grid-template-columns:1fr 1fr;} .row.h{display:none} .row small{grid-column:1/-1}}
+
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px}
+.chip{background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:6px 14px;font:inherit;color:var(--ink);cursor:pointer}
+.chip.on{background:var(--carb-soft);border-color:var(--carb);font-weight:650}
+ul.items li.fam{flex-direction:column;gap:3px}
+.mqs{display:flex;flex-wrap:wrap;gap:2px 14px;color:var(--muted);font-size:.86rem}
+.mq b{color:var(--ink);font-weight:600}
+input[type=text]{font:inherit;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--panel);color:var(--ink);max-width:100%;width:220px}
+.hcfam{color:var(--muted);font-size:.88rem;margin:6px 0 2px}
+.btnrow{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
 </style>
 </head>
 <body>
@@ -283,48 +293,80 @@ const TPL={
 };
 
 /* ============ ESTADO ============ */
-const REC_SHARE=[.23,.11,.33,.11,.22];
-const DEFAULTS={kcal:1800,carbPct:40,kshare:[20,10,35,10,25],racs:[4,2,6,2,4],allowHigh:false,veto:[],pins:[],plan:null,day:0,tab:'week',stale:false};
-let S=JSON.parse(JSON.stringify(DEFAULTS));
-let draft={food:'cafeleche',meals:[0,1],days:[0,1,2,3,4,5,6],mode:'fixed',g:200};
-
-function save(){try{localStorage.setItem('menuHC2',JSON.stringify(S))}catch(e){}}
-function planValid(p){
-  return Array.isArray(p)&&p.length===7&&p.every(d=>d&&Array.isArray(d.meals)&&d.meals.length===5&&d.meals.every(m=>m.items.every(i=>byId[i.id])));
-}
-function load(){
-  try{
-    let r=localStorage.getItem('menuHC2');
-    let old=false;
-    if(!r){r=localStorage.getItem('menuHC');old=!!r}
-    if(!r)return;
-    const o=JSON.parse(r);
-    if(old){ // migración desde la versión anterior: se conservan ajustes, fijados y vetos
-      ['kcal','kshare','allowHigh'].forEach(k=>{if(o[k]!=null)S[k]=o[k]});
-      S.pins=(o.pins||[]).filter(p=>byId[p.foodId]);
-      S.veto=(o.veto||[]).filter(id=>byId[id]);
-    }else{
-      Object.assign(S,o);
-      S.pins=(S.pins||[]).filter(p=>byId[p.foodId]);
-      S.veto=(S.veto||[]).filter(id=>byId[id]);
-      if(!Array.isArray(S.racs)||S.racs.length!==5)S.racs=DEFAULTS.racs.slice();
-      if(!planValid(S.plan))S.plan=null;
-    }
-  }catch(e){}
-}
-
-/* ============ CÁLCULO ============ */
 const sum=a=>a.reduce((x,y)=>x+y,0);
 const share=(arr,i)=>{const t=sum(arr);return t>0?arr[i]/t:1/arr.length};
 const fmt=(n,d=0)=>n.toLocaleString('es-ES',{minimumFractionDigits:d,maximumFractionDigits:d});
-function targets(mi){return{k:S.kcal*share(S.kshare,mi),hc:S.racs[mi]*10}}
-function recRacs(){
-  const total=S.kcal*S.carbPct/100/40;
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const REC_SHARE=[.23,.11,.33,.11,.22];
+const MAX_MEMBERS=6;
+
+/* Raciones aconsejadas según calorías y % de hidratos (se redondea a 0,5) */
+function recRacs(kcal,carbPct){
+  const total=kcal*carbPct/100/40;
   return REC_SHARE.map((s,i)=>{
     const cap=(i===1||i===3)?3:6;
     return Math.min(cap,Math.max(1,Math.round(total*s*2)/2));
   });
 }
+function newMember(id,name,kcal){
+  return{id,name,kcal,carbPct:40,kshare:[20,10,35,10,25],racs:recRacs(kcal,40)};
+}
+const defaultMembers=()=>[newMember('m1','Adulto 1',1800),newMember('m2','Adulto 2',2200),newMember('m3','Niño 1',1600),newMember('m4','Niño 2',1400)];
+let S={members:defaultMembers(),allowHigh:false,veto:[],pins:[],plan:null,day:0,tab:'week',view:'all',setM:'m1',shopM:'all',stale:false};
+let draft={food:'cafeleche',meals:[0,1],days:[0,1,2,3,4,5,6],members:S.members.map(m=>m.id),mode:'fixed',g:200};
+
+const getM=id=>S.members.find(m=>m.id===id);
+const curSet=()=>getM(S.setM)||S.members[0];
+
+function save(){try{localStorage.setItem('menuHC3',JSON.stringify(S))}catch(e){}}
+function sanitizeMember(m,i){
+  const d=newMember(m&&m.id||('m'+(i+1)),m&&m.name||('Miembro '+(i+1)),Number(m&&m.kcal)||1800);
+  if(!m)return d;
+  if(Array.isArray(m.kshare)&&m.kshare.length===5)d.kshare=m.kshare.map(Number);
+  if(Array.isArray(m.racs)&&m.racs.length===5)d.racs=m.racs.map(Number);
+  if(m.carbPct)d.carbPct=Number(m.carbPct);
+  return d;
+}
+function planValid(p){
+  return Array.isArray(p)&&p.length===7&&p.every(d=>d&&Array.isArray(d.meals)&&d.meals.length===5&&
+    d.meals.every(m=>m&&m.per&&Array.isArray(m.items)&&m.items.every(i=>byId[i.id])&&S.members.every(mem=>m.per[mem.id])));
+}
+function load(){
+  try{
+    const r=localStorage.getItem('menuHC3');
+    if(r){
+      Object.assign(S,JSON.parse(r));
+    }else{
+      const r2=localStorage.getItem('menuHC2')||localStorage.getItem('menuHC');
+      if(r2){ // migración desde la versión de una sola persona: pasa a ser el primer miembro
+        const o=JSON.parse(r2);
+        const first=S.members[0];
+        if(o.kcal)first.kcal=Number(o.kcal);
+        if(Array.isArray(o.kshare)&&o.kshare.length===5)first.kshare=o.kshare.map(Number);
+        if(Array.isArray(o.racs)&&o.racs.length===5)first.racs=o.racs.map(Number);
+        else first.racs=recRacs(first.kcal,first.carbPct);
+        if(o.carbPct)first.carbPct=Number(o.carbPct);
+        if(typeof o.allowHigh==='boolean')S.allowHigh=o.allowHigh;
+        S.veto=o.veto||[];
+        S.pins=o.pins||[];
+        S.plan=null;
+      }
+    }
+  }catch(e){}
+  if(!Array.isArray(S.members)||!S.members.length)S.members=defaultMembers();
+  S.members=S.members.slice(0,MAX_MEMBERS).map(sanitizeMember);
+  S.pins=(S.pins||[]).filter(p=>byId[p.foodId]).map(p=>({...p,members:Array.isArray(p.members)?p.members.filter(id=>getM(id)):null}));
+  S.pins=S.pins.filter(p=>p.members===null||p.members.length);
+  S.veto=(S.veto||[]).filter(id=>byId[id]);
+  if(S.view!=='all'&&!getM(S.view))S.view='all';
+  if(S.shopM!=='all'&&!getM(S.shopM))S.shopM='all';
+  if(!getM(S.setM))S.setM=S.members[0].id;
+  draft.members=S.members.map(m=>m.id);
+  if(!planValid(S.plan))S.plan=null;
+}
+
+/* ============ CÁLCULO ============ */
+function memberTargets(mem,mi){return{k:mem.kcal*share(mem.kshare,mi),hc:mem.racs[mi]*10}}
 function nut(f,g){const r=g/100;return{k:f.k*r,c:f.c*r,p:f.p*r,f:f.f*r}}
 function evalItems(items,tg){
   let k=0,c=0,p=0,f=0;
@@ -363,10 +405,11 @@ function pick(list,usage){
   for(let i=0;i<list.length;i++){r-=w[i];if(r<=0)return list[i]}
   return list[list.length-1];
 }
-function buildCandidate(mi,pins,exclude,usage){
+/* Elige los alimentos de una toma (iguales para toda la familia) */
+function buildFoods(mi,pins,exclude,usage){
   const meal=MEALS[mi].id;
   const used=new Set(pins.map(p=>p.foodId));
-  const items=pins.map(p=>({id:p.foodId,g:p.grams!=null?p.grams:byId[p.foodId].def,fixed:p.grams!=null,pin:p.id}));
+  const foods=pins.map(p=>({id:p.foodId,pin:p.id}));
   for(const slot of TPL[meal]){
     if(pins.some(p=>slot.c.includes(byId[p.foodId].cat)))continue;
     if(Math.random()>slot.p)continue;
@@ -374,22 +417,42 @@ function buildCandidate(mi,pins,exclude,usage){
     if(!list.length)continue;
     const f=pick(list,usage);
     used.add(f.id);
-    items.push({id:f.id,g:f.def,fixed:false});
+    foods.push({id:f.id});
   }
-  return items;
+  return foods;
 }
+/* Calcula las cantidades de esos alimentos para un miembro, según sus objetivos */
+function solveMember(mem,mi,foods,pinsById){
+  const tg=memberTargets(mem,mi);
+  const work=[];
+  foods.forEach(it=>{
+    const p=it.pin&&pinsById[it.pin];
+    if(p){
+      if(p.members&&!p.members.includes(mem.id))return;
+      work.push({id:it.id,g:p.grams!=null?p.grams:byId[it.id].def,fixed:p.grams!=null});
+    }else work.push({id:it.id,g:byId[it.id].def,fixed:false});
+  });
+  if(!work.length)return{g:{},e:{k:0,c:0,p:0,f:0,loss:1000}};
+  const e=optimize(work,tg);
+  const g={};work.forEach(w=>g[w.id]=w.g);
+  return{g,e};
+}
+const pack=r=>({g:r.g,tot:{k:r.e.k,c:r.e.c,p:r.e.p,f:r.e.f}});
 function generateMeal(mi,pins,exclude,usage){
-  const tg=targets(mi);
+  const pb=Object.fromEntries(pins.map(p=>[p.id,p]));
   let best=null;
   for(let t=0;t<120;t++){
-    const items=buildCandidate(mi,pins,exclude,usage);
-    if(!items.length)continue;
-    const e=optimize(items,tg);
-    if(!best||e.loss<best.e.loss)best={items:items.map(x=>({...x})),e};
-    if(e.loss<0.8)break;
+    const foods=buildFoods(mi,pins,exclude,usage);
+    if(!foods.length)continue;
+    const res=S.members.map(mem=>solveMember(mem,mi,foods,pb));
+    const total=sum(res.map(r=>r.e.loss)),worst=Math.max(...res.map(r=>r.e.loss));
+    if(!best||total<best.total)best={foods,res,total};
+    if(worst<0.8)break;
   }
-  if(!best)return{items:[],tot:{k:0,c:0,p:0,f:0}};
-  return{items:best.items,tot:{k:best.e.k,c:best.e.c,p:best.e.p,f:best.e.f}};
+  const per={};
+  if(!best){S.members.forEach(m=>per[m.id]={g:{},tot:{k:0,c:0,p:0,f:0}});return{items:[],per}}
+  S.members.forEach((m,i)=>per[m.id]=pack(best.res[i]));
+  return{items:best.foods.map(x=>({...x})),per};
 }
 function pinsForMeal(dayIdx,assign,mi){
   return S.pins.filter(p=>p.days.includes(dayIdx)&&assign[p.id]===mi);
@@ -418,19 +481,32 @@ function renewMeal(d,mi){
   day.meals[mi]=generateMeal(mi,pinsForMeal(d,day.pins,mi),exclude,usage);
   save();render();
 }
-function dayTot(d){
+/* Recalcula solo las cantidades de un miembro; los alimentos del menú no cambian */
+function recalcMember(mem){
+  if(!S.plan)return;
+  const pb=Object.fromEntries(S.pins.map(p=>[p.id,p]));
+  S.plan.forEach(d=>d.meals.forEach((m,mi)=>{m.per[mem.id]=pack(solveMember(mem,mi,m.items,pb))}));
+}
+function dayTot(d,mid){
   const t={k:0,c:0,p:0,f:0};
-  d.meals.forEach(m=>{t.k+=m.tot.k;t.c+=m.tot.c;t.p+=m.tot.p;t.f+=m.tot.f});
+  d.meals.forEach(m=>{const r=m.per[mid].tot;t.k+=r.k;t.c+=r.c;t.p+=r.p;t.f+=r.f});
   return t;
 }
-/* Compra: suma de los 7 días, con el desglose por día */
-function weekTotals(){
+/* Compra: suma de los 7 días (de toda la familia o de un miembro), con desglose por día */
+function weekTotals(filter){
   const tot={},per={};
-  S.plan.forEach((d,di)=>d.meals.forEach(m=>m.items.forEach(i=>{
-    tot[i.id]=(tot[i.id]||0)+i.g;
-    per[i.id]=per[i.id]||{};
-    per[i.id][di]=(per[i.id][di]||0)+i.g;
-  })));
+  S.plan.forEach((d,di)=>d.meals.forEach(m=>{
+    S.members.forEach(mem=>{
+      if(filter!=='all'&&filter!==mem.id)return;
+      const r=m.per[mem.id];if(!r)return;
+      Object.entries(r.g).forEach(([id,g])=>{
+        if(g<=0)return;
+        tot[id]=(tot[id]||0)+g;
+        per[id]=per[id]||{};
+        per[id][di]=(per[id][di]||0)+g;
+      });
+    });
+  }));
   return{tot,per};
 }
 
@@ -446,12 +522,21 @@ function racText(f,g){
   const r=nut(f,g).c/10;
   return r<0.05?'sin hidratos':`${fmt(r,1)} ${fmt(r,1)==='1,0'?'ración':'raciones'}`;
 }
+function racShort(f,g){
+  const r=nut(f,g).c/10;
+  return r<0.05?'0 rac.':`${fmt(r,1)} rac.`;
+}
 function daysLabel(ds){
   if(ds.length===7)return 'todos los días';
   return ds.slice().sort().map(i=>DAYS[i].slice(0,3)).join(', ');
 }
+const isPinned=it=>it.pin&&S.pins.some(p=>p.id===it.pin);
+const badges=it=>{const f=byId[it.id];return `${isPinned(it)?'<em>fijado</em>':''}${isHigh(f)?'<em class="hi">IG alto</em>':''}`};
 
 /* ============ VISTAS ============ */
+function chips(current,fn,withAll,allLabel){
+  return `<div class="chips">${withAll?`<button class="chip ${current==='all'?'on':''}" onclick="${fn}('all')">${allLabel||'Familia'}</button>`:''}${S.members.map(m=>`<button class="chip ${current===m.id?'on':''}" onclick="${fn}('${m.id}')">${esc(m.name)}</button>`).join('')}</div>`;
+}
 function gauge(c,t){
   const max=Math.max(t*1.4,c*1.1,10);
   const pct=v=>(v/max*100).toFixed(1);
@@ -460,70 +545,103 @@ function gauge(c,t){
   return `<div class="gauge" role="img" aria-label="Hidratos ${fmt(c/10,1)} raciones de ${fmt(t/10,1)} objetivo"><div class="fill" style="width:${pct(c)}%"></div>${ticks}<b class="goal" style="left:${pct(t)}%"></b></div>
   <div class="gcap"><span>cada marca = 1 ración (10 g)</span><span>línea = objetivo</span></div>`;
 }
+function memberBody(d,mem){
+  const t=dayTot(d,mem.id);
+  const meals=d.meals.map((m,mi)=>{
+    const r=m.per[mem.id],tg=memberTargets(mem,mi);
+    const items=m.items.filter(it=>(r.g[it.id]||0)>0).map(it=>{const f=byId[it.id],g=r.g[it.id];
+      return `<li><span>${f.n}${badges(it)}</span><span class="q">${qty(f,g)}<span class="rac">${racText(f,g)}</span></span></li>`}).join('');
+    return `<section class="meal">
+      <div class="mhead"><h3>${MEALS[mi].n}</h3><button class="ghost" onclick="renewMeal(${S.day},${mi})" title="Cambia los alimentos de esta toma para toda la familia">Renovar</button></div>
+      <div class="hc"><b>${fmt(r.tot.c/10,1)} raciones</b> (${fmt(r.tot.c)} g de hidratos) · objetivo ${fmt(mem.racs[mi],1)} raciones</div>
+      ${gauge(r.tot.c,tg.hc)}
+      <ul class="items">${items||'<li class="empty">Sin alimentos para esta toma. Revisa los vetos o los fijados.</li>'}</ul>
+      <div class="macros">${fmt(r.tot.k)} kcal (objetivo ${fmt(tg.k)}) · proteína ${fmt(r.tot.p)} g · grasa ${fmt(r.tot.f)} g</div>
+    </section>`}).join('');
+  return `<p class="total"><b>${DAYS[S.day]} · ${esc(mem.name)}:</b> ${fmt(t.k)} kcal · <b>${fmt(t.c/10,1)} raciones</b> (${fmt(t.c)} g de hidratos) · proteína ${fmt(t.p)} g · grasa ${fmt(t.f)} g. Renovar una toma cambia los alimentos para toda la familia.</p>${meals}`;
+}
+function familyBody(d){
+  const totals=S.members.map(mem=>{const t=dayTot(d,mem.id);return `<span class="mq"><b>${esc(mem.name)}</b> ${fmt(t.k)} kcal · ${fmt(t.c/10,1)} rac.</span>`}).join('');
+  const meals=d.meals.map((m,mi)=>{
+    const hc=S.members.map(mem=>`${esc(mem.name)} ${fmt(m.per[mem.id].tot.c/10,1)}/${fmt(mem.racs[mi],1)}`).join(' · ');
+    const items=m.items.map(it=>{const f=byId[it.id];
+      const cells=S.members.filter(mem=>(m.per[mem.id].g[it.id]||0)>0).map(mem=>{const g=m.per[mem.id].g[it.id];
+        return `<span class="mq"><b>${esc(mem.name)}</b> ${fmt(g)} g · ${racShort(f,g)}</span>`}).join('');
+      return `<li class="fam"><span>${f.n}${badges(it)}</span><span class="mqs">${cells}</span></li>`}).join('');
+    return `<section class="meal">
+      <div class="mhead"><h3>${MEALS[mi].n}</h3><button class="ghost" onclick="renewMeal(${S.day},${mi})" title="Cambia los alimentos de esta toma para toda la familia">Renovar</button></div>
+      <div class="hcfam">Raciones (logradas/objetivo): ${hc}</div>
+      <ul class="items">${items||'<li class="empty">Sin alimentos para esta toma.</li>'}</ul>
+    </section>`}).join('');
+  return `<p class="total"><b>${DAYS[S.day]}, toda la familia</b></p><div class="mqs" style="margin:-6px 0 14px">${totals}</div>${meals}
+    <p class="sub">Para ver crudo y cocinado o las unidades de cada alimento, elige a un miembro arriba.</p>`;
+}
 function viewWeek(){
   if(!S.plan)return '';
-  const strip=S.plan.map((d,i)=>{const t=dayTot(d);
-    return `<button class="day ${i===S.day?'on':''}" onclick="setDay(${i})" aria-label="${DAYS[i]}"><span>${DAYS[i].slice(0,3)}</span><strong>${fmt(t.c/10,1)} rac.</strong><small>${fmt(t.k)} kcal</small></button>`}).join('');
-  const d=S.plan[S.day],t=dayTot(d);
-  const meals=d.meals.map((m,mi)=>{
-    const tg=targets(mi);
-    const items=m.items.map(it=>{const f=byId[it.id];
-      return `<li><span>${f.n}${it.pin?'<em>fijado</em>':''}${isHigh(f)?'<em class="hi">IG alto</em>':''}</span><span class="q">${qty(f,it.g)}<span class="rac">${racText(f,it.g)}</span></span></li>`}).join('');
-    return `<section class="meal">
-      <div class="mhead"><h3>${MEALS[mi].n}</h3><button class="ghost" onclick="renewMeal(${S.day},${mi})">Renovar</button></div>
-      <div class="hc"><b>${fmt(m.tot.c/10,1)} raciones</b> (${fmt(m.tot.c)} g de hidratos) · objetivo ${fmt(S.racs[mi],1)} raciones</div>
-      ${gauge(m.tot.c,tg.hc)}
-      <ul class="items">${items||'<li class="empty">Sin alimentos disponibles para esta toma. Revisa los vetos.</li>'}</ul>
-      <div class="macros">${fmt(m.tot.k)} kcal (objetivo ${fmt(tg.k)}) · proteína ${fmt(m.tot.p)} g · grasa ${fmt(m.tot.f)} g</div>
-    </section>`}).join('');
-  return `<div class="strip">${strip}</div>
-    <p class="total"><b>${DAYS[S.day]}:</b> ${fmt(t.k)} kcal · <b>${fmt(t.c/10,1)} raciones</b> (${fmt(t.c)} g de hidratos) · proteína ${fmt(t.p)} g · grasa ${fmt(t.f)} g</p>
-    ${meals}`;
+  const mem=getM(S.view);
+  const strip=S.plan.map((d,i)=>{
+    const sub=mem?`<strong>${fmt(dayTot(d,mem.id).c/10,1)} rac.</strong><small>${fmt(dayTot(d,mem.id).k)} kcal</small>`:`<small>familia</small>`;
+    return `<button class="day ${i===S.day?'on':''}" onclick="setDay(${i})" aria-label="${DAYS[i]}"><span>${DAYS[i].slice(0,3)}</span>${sub}</button>`}).join('');
+  const d=S.plan[S.day];
+  return `${chips(S.view,'setView',true)}<div class="strip">${strip}</div>${mem?memberBody(d,mem):familyBody(d)}`;
 }
 function viewSettings(){
-  const totR=sum(S.racs), pctK=totR*40/S.kcal*100, rec=recRacs();
+  const mem=curSet();
+  const totR=sum(mem.racs), pctK=totR*40/mem.kcal*100, rec=recRacs(mem.kcal,mem.carbPct);
+  const idx=S.members.indexOf(mem);
   const rows=MEALS.map((m,i)=>{
-    const tg=targets(i);
-    const hi=(i===1||i===3)?S.racs[i]>3:S.racs[i]>6;
+    const tg=memberTargets(mem,i);
+    const hi=(i===1||i===3)?mem.racs[i]>3:mem.racs[i]>6;
     return `<div class="row"><span>${m.n}</span>
-      <input type="number" min="0" max="100" value="${S.kshare[i]}" onchange="setShare(${i},this.value)" aria-label="% de calorías en ${m.n}">
-      <input type="number" min="0" max="12" step="0.5" value="${S.racs[i]}" onchange="setRac(${i},this.value)" aria-label="Raciones de hidratos en ${m.n}">
+      <input type="number" min="0" max="100" value="${mem.kshare[i]}" onchange="setShare(${i},this.value)" aria-label="% de calorías en ${m.n}">
+      <input type="number" min="0" max="12" step="0.5" value="${mem.racs[i]}" onchange="setRac(${i},this.value)" aria-label="Raciones de hidratos en ${m.n}">
       <small>${fmt(tg.k)} kcal · ${fmt(tg.hc)} g de HC${hi?' <span class="warn">· por encima de lo habitual</span>':''}</small></div>`}).join('');
-  const ks=sum(S.kshare);
+  const ks=sum(mem.kshare);
   const vetoes=CATS.map(([c,n])=>`<div class="vgroup">${n}</div><div class="chk">${foodsOf(c).map(f=>
     `<label><input type="checkbox" ${S.veto.includes(f.id)?'checked':''} onchange="toggleVeto('${f.id}')"> ${f.n}</label>`).join('')}</div>`).join('');
-  return `<section class="card">
-    <h2>Calorías del día</h2>
+  return `${chips(mem.id,'setSetM',false)}
+  <section class="card">
+    <h2>${esc(mem.name)}</h2>
+    <label for="nm">Nombre</label>
+    <input id="nm" type="text" maxlength="20" value="${esc(mem.name)}" onchange="setName(this.value)">
     <label for="kc">Calorías al día</label>
-    <input id="kc" type="number" min="1000" max="4000" step="50" value="${S.kcal}" onchange="setNum('kcal',this.value,1000,4000)">
+    <input id="kc" type="number" min="800" max="4000" step="50" value="${mem.kcal}" onchange="setMemNum('kcal',this.value,800,4000)">
+    <div class="btnrow">
+      ${S.members.length<MAX_MEMBERS?`<button class="ghost" onclick="addMember()">Añadir miembro</button>`:''}
+      ${S.members.length>1?`<button class="ghost" onclick="delMember()">Quitar a ${esc(mem.name)}</button>`:''}
+    </div>
+    <p class="sub">El menú es el mismo para todos. Cada miembro tiene sus propias calorías y raciones, y de ahí salen sus cantidades.</p>
   </section>
   <section class="card">
     <h2>Raciones de hidratos por toma</h2>
-    <p class="sub">Una ración son 10 g de hidratos. Cada toma tiene su propio objetivo y puedes cambiarlo a mano.</p>
+    <p class="sub">Una ración son 10 g de hidratos. Cada toma tiene su objetivo y puedes cambiarlo a mano. Los cambios se aplican al menú actual sin cambiar los alimentos.</p>
     <div class="row h"><span>Toma</span><span>% calorías</span><span>Raciones</span><span>Resultado</span></div>
     ${rows}
     <p class="total" style="margin-top:12px"><b>Total: ${fmt(totR,1)} raciones al día</b> (${fmt(totR*10)} g), un ${fmt(pctK)} % de las calorías.</p>
     ${ks!==100?`<p class="warn">Los porcentajes de calorías suman ${ks} %. La app los ajusta proporcionalmente, pero conviene que sumen 100.</p>`:''}
-    <label for="cp">Referencia para las raciones aconsejadas: ${S.carbPct} % de las calorías en hidratos</label>
-    <input id="cp" type="range" min="35" max="50" value="${S.carbPct}" onchange="setNum('carbPct',this.value,35,50)">
-    <p class="sub">Con ${fmt(S.kcal)} kcal esto da ${rec.map((r,i)=>`${MEALS[i].n.toLowerCase()} ${fmt(r,1)}`).join(', ')}.</p>
+    <label for="cp">Referencia para las raciones aconsejadas: ${mem.carbPct} % de las calorías en hidratos</label>
+    <input id="cp" type="range" min="35" max="50" value="${mem.carbPct}" onchange="setMemNum('carbPct',this.value,35,50)">
+    <p class="sub">Con ${fmt(mem.kcal)} kcal esto da ${rec.map((r,i)=>`${MEALS[i].n.toLowerCase()} ${fmt(r,1)}`).join(', ')}.</p>
     <p><button class="ghost" onclick="applyRec()">Aplicar raciones aconsejadas</button></p>
-    <p class="sub">Como referencia general, suelen manejarse 3 a 6 raciones en las comidas principales y 1 a 3 en los tentempiés. Lo adecuado para cada persona lo fija su equipo médico o su dietista.</p>
+    <p class="sub">Como referencia general, suelen manejarse 3 a 6 raciones en las comidas principales y 1 a 3 en los tentempiés. En niños y en cada persona lo adecuado lo fija su equipo médico o su dietista.</p>
   </section>
   <section class="card">
-    <h2>Alimentos</h2>
+    <h2>Alimentos (para toda la familia)</h2>
     <label style="display:flex;gap:8px;align-items:center;font-weight:400"><input type="checkbox" ${S.allowHigh?'checked':''} onchange="toggleHigh()"> Permitir alimentos de índice glucémico alto (70 o más)</label>
     <details><summary>Vetar alimentos que no quiero ver</summary>${vetoes}</details>
   </section>
   <p class="foot">Herramienta de apoyo para organizar comidas. Hidratos e índice glucémico según la tabla de raciones de hidratos de carbono de la Fundación para la Diabetes (3.ª edición). Las calorías, proteínas y grasas son valores medios aproximados. La app no calcula dosis de insulina.</p>`;
 }
 function viewPins(){
+  draft.members=draft.members.filter(id=>getM(id));
   const opts=CATS.map(([c,n])=>`<optgroup label="${n}">${foodsOf(c).map(f=>`<option value="${f.id}" ${draft.food===f.id?'selected':''}>${f.n}</option>`).join('')}</optgroup>`).join('');
   const meals=MEALS.map((m,i)=>`<label><input type="checkbox" ${draft.meals.includes(i)?'checked':''} onchange="dMeal(${i})"> ${m.n}</label>`).join('');
   const days=DAYS.map((d,i)=>`<label><input type="checkbox" ${draft.days.includes(i)?'checked':''} onchange="dDay(${i})"> ${d.slice(0,3)}</label>`).join('');
+  const who=S.members.map(m=>`<label><input type="checkbox" ${draft.members.includes(m.id)?'checked':''} onchange="dMem('${m.id}')"> ${esc(m.name)}</label>`).join('');
   const f=byId[draft.food];
   const list=S.pins.map(p=>{const pf=byId[p.foodId];
-    return `<div class="pin"><div><strong>${pf.n}</strong><small>${p.meals.map(i=>MEALS[i].n).join(' o ')} · ${daysLabel(p.days)} · ${p.grams!=null?qty(pf,p.grams)+' · '+racText(pf,p.grams):'cantidad calculada por la app'}</small></div><button class="ghost" onclick="delPin('${p.id}')">Quitar</button></div>`}).join('');
+    const only=p.members?` · solo ${p.members.map(id=>esc(getM(id).name)).join(', ')}`:'';
+    return `<div class="pin"><div><strong>${pf.n}</strong><small>${p.meals.map(i=>MEALS[i].n).join(' o ')} · ${daysLabel(p.days)}${only} · ${p.grams!=null?qty(pf,p.grams)+' · '+racText(pf,p.grams):'cantidad calculada por la app'}</small></div><button class="ghost" onclick="delPin('${p.id}')">Quitar</button></div>`}).join('');
   return `<section class="card">
     <h2>Fijar un alimento</h2>
     <p class="sub">La app lo coloca en la toma que elijas y calcula el resto alrededor de él.</p>
@@ -531,68 +649,98 @@ function viewPins(){
     <label>Tomas posibles</label><div class="chk">${meals}</div>
     <p class="sub">Si marcas varias, cada día lo coloca en una de ellas.</p>
     <label>Días</label><div class="chk">${days}</div>
+    ${S.members.length>1?`<label>Quién lo toma</label><div class="chk">${who}</div><p class="sub">Los que no lo tomen se quedan sin ese alimento y el resto de su toma se ajusta.</p>`:''}
     <label>Cantidad</label>
     <div class="chk">
       <label><input type="radio" name="mode" ${draft.mode==='fixed'?'checked':''} onchange="dMode('fixed')"> Cantidad fija</label>
       <label><input type="radio" name="mode" ${draft.mode==='free'?'checked':''} onchange="dMode('free')"> La calcula la app</label>
     </div>
-    ${draft.mode==='fixed'?`<label for="pg">Gramos${f.u?` (1 ${f.un[0]} ≈ ${f.u} g)`:''}</label><input id="pg" type="number" min="1" step="5" value="${draft.g}" onchange="draft.g=+this.value||${f.def};render()"><p class="sub">${racText(f,Number(draft.g)||f.def)}</p>`:''}
+    ${draft.mode==='fixed'?`<label for="pg">Gramos${f.u?` (1 ${f.un[0]} ≈ ${f.u} g)`:''}</label><input id="pg" type="number" min="1" step="5" value="${draft.g}" onchange="draft.g=+this.value||${f.def};render()"><p class="sub">${racText(f,Number(draft.g)||f.def)}.${S.members.length>1?' La cantidad fija es la misma para todos los que lo toman. Si cada uno debe tener la suya, elige "La calcula la app".':''}</p>`:''}
     <p><button class="btn" onclick="addPin()">Añadir alimento fijado</button></p>
   </section>
   <section class="card"><h2>Alimentos fijados</h2>${list||'<p class="empty">Todavía no has fijado ninguno. Prueba con el café con leche del desayuno.</p>'}</section>`;
 }
 function viewShop(){
   if(!S.plan)return '';
-  const {tot,per}=weekTotals();
+  const {tot,per}=weekTotals(S.shopM);
+  const who=S.shopM==='all'?'toda la familia':esc(getM(S.shopM).name);
   const groups=CATS.map(([c,n])=>{
     const rows=foodsOf(c).filter(f=>tot[f.id]).map(f=>{
       const dd=Object.keys(per[f.id]).map(Number).sort((a,b)=>a-b).map(di=>`${DAYS[di].slice(0,3)} ${fmt(per[f.id][di])} g`).join(' · ');
       return `<li><span>${f.n}<span class="d">${dd}</span></span><span class="q">${qty(f,tot[f.id])}</span></li>`}).join('');
     return rows?`<section class="card"><h2>${n}</h2><ul class="items">${rows}</ul></section>`:'';
   }).join('');
-  return `<div class="shophead"><p class="sub">Compra de la semana completa (lunes a domingo). Los pesos con estado van en crudo, tal como se compran. Bajo cada alimento, lo que se usa cada día.</p><button class="ghost" onclick="copyShop()">Copiar lista</button></div>${groups}`;
+  return `${chips(S.shopM,'setShopM',true,'Toda la familia')}<div class="shophead"><p class="sub">Compra de la semana completa para ${who} (lunes a domingo). Los pesos con estado van en crudo, tal como se compran. Bajo cada alimento, lo que se usa cada día.</p><button class="ghost" onclick="copyShop()">Copiar lista</button></div>${groups}`;
 }
 function render(){
-  const tabs=[['week','Semana'],['settings','Objetivos'],['pins','Fijados'],['shop','Compra']];
+  const tabs=[['week','Semana'],['settings','Miembros'],['pins','Fijados'],['shop','Compra']];
   const views={week:viewWeek,settings:viewSettings,pins:viewPins,shop:viewShop};
   document.querySelector('#app').innerHTML=`
     <header>
-      <div><h1>Menú semanal</h1><p class="sub">Cinco tomas al día, contadas en raciones de hidratos</p></div>
+      <div><h1>Menú familiar</h1><p class="sub">Los mismos alimentos para todos, con las raciones y cantidades de cada uno</p></div>
       <button class="btn" onclick="regen()">Generar semana nueva</button>
     </header>
     <nav>${tabs.map(([k,n])=>`<button class="${S.tab===k?'on':''}" onclick="setTab('${k}')">${n}</button>`).join('')}</nav>
-    ${S.stale?`<div class="banner"><span>Has cambiado objetivos o alimentos fijados. El menú actual no los refleja.</span><button class="ghost" onclick="regen()">Generar semana nueva</button></div>`:''}
+    ${S.stale?`<div class="banner"><span>Has cambiado alimentos fijados o vetos. El menú actual no los refleja.</span><button class="ghost" onclick="regen()">Generar semana nueva</button></div>`:''}
     ${views[S.tab]()}`;
 }
 
 /* ============ ACCIONES ============ */
 function setTab(t){S.tab=t;save();render()}
 function setDay(i){S.day=i;save();render()}
+function setView(v){S.view=v;save();render()}
+function setShopM(v){S.shopM=v;save();render()}
+function setSetM(v){S.setM=v;save();render()}
 function regen(){genWeek();S.tab='week';render()}
 function clamp(v,a,b){v=Number(v);if(isNaN(v))v=a;return Math.min(b,Math.max(a,v))}
-function setNum(k,v,a,b){S[k]=clamp(v,a,b);S.stale=true;save();render()}
-function setShare(i,v){S.kshare[i]=clamp(v,0,100);S.stale=true;save();render()}
-function setRac(i,v){S.racs[i]=Math.round(clamp(v,0,12)*2)/2;S.stale=true;save();render()}
-function applyRec(){S.racs=recRacs();S.stale=true;save();render()}
+function setName(v){const m=curSet();m.name=(v||'').trim().slice(0,20)||m.name;save();render()}
+function setMemNum(k,v,a,b){const m=curSet();m[k]=clamp(v,a,b);if(k==='kcal'||k==='carbPct'){/* las raciones no cambian solas */}recalcMember(m);save();render()}
+function setShare(i,v){const m=curSet();m.kshare[i]=clamp(v,0,100);recalcMember(m);save();render()}
+function setRac(i,v){const m=curSet();m.racs[i]=Math.round(clamp(v,0,12)*2)/2;recalcMember(m);save();render()}
+function applyRec(){const m=curSet();m.racs=recRacs(m.kcal,m.carbPct);recalcMember(m);save();render()}
+function addMember(){
+  if(S.members.length>=MAX_MEMBERS)return;
+  const m=newMember('m'+Date.now().toString(36),'Miembro '+(S.members.length+1),1800);
+  S.members.push(m);S.setM=m.id;
+  recalcMember(m);save();render();
+}
+function delMember(){
+  if(S.members.length<=1)return;
+  const m=curSet();
+  if(!confirm('¿Quitar a '+m.name+' del menú familiar?'))return;
+  S.members=S.members.filter(x=>x.id!==m.id);
+  S.pins.forEach(p=>{if(p.members)p.members=p.members.filter(id=>id!==m.id)});
+  S.pins=S.pins.filter(p=>p.members===null||p.members.length);
+  if(S.plan)S.plan.forEach(d=>d.meals.forEach(mm=>{delete mm.per[m.id]}));
+  S.setM=S.members[0].id;
+  if(S.view===m.id)S.view='all';
+  if(S.shopM===m.id)S.shopM='all';
+  save();render();
+}
 function toggleHigh(){S.allowHigh=!S.allowHigh;S.stale=true;save();render()}
 function toggleVeto(id){const i=S.veto.indexOf(id);i>=0?S.veto.splice(i,1):S.veto.push(id);S.stale=true;save();render()}
 function dFood(id){draft.food=id;draft.g=byId[id].u||byId[id].def;render()}
 function dMeal(i){const a=draft.meals,k=a.indexOf(i);k>=0?a.splice(k,1):a.push(i);render()}
 function dDay(i){const a=draft.days,k=a.indexOf(i);k>=0?a.splice(k,1):a.push(i);render()}
+function dMem(id){const a=draft.members,k=a.indexOf(id);k>=0?a.splice(k,1):a.push(id);render()}
 function dMode(m){draft.mode=m;render()}
 function addPin(){
-  if(!draft.meals.length||!draft.days.length){alert('Elige al menos una toma y un día.');return}
-  S.pins.push({id:'p'+Date.now().toString(36),foodId:draft.food,meals:draft.meals.slice().sort(),days:draft.days.slice().sort(),grams:draft.mode==='fixed'?Math.max(1,Number(draft.g)||byId[draft.food].def):null});
+  const ids=draft.members.filter(id=>getM(id));
+  if(!draft.meals.length||!draft.days.length||!ids.length){alert('Elige al menos una toma, un día y un miembro.');return}
+  S.pins.push({id:'p'+Date.now().toString(36),foodId:draft.food,meals:draft.meals.slice().sort(),days:draft.days.slice().sort(),
+    members:ids.length===S.members.length?null:ids.slice(),
+    grams:draft.mode==='fixed'?Math.max(1,Number(draft.g)||byId[draft.food].def):null});
   S.stale=true;save();render();
 }
 function delPin(id){S.pins=S.pins.filter(p=>p.id!==id);S.stale=true;save();render()}
 function copyShop(){
-  const {tot}=weekTotals();
+  const {tot}=weekTotals(S.shopM);
+  const who=S.shopM==='all'?'toda la familia':getM(S.shopM).name;
   const lines=CATS.flatMap(([c,n])=>{
     const rows=foodsOf(c).filter(f=>tot[f.id]).map(f=>`- ${f.n}: ${fmt(tot[f.id])} g${f.st==='crudo'?' (crudo)':''}`);
     return rows.length?[n+':',...rows,'']:[];
   });
-  const text='Compra de la semana\n\n'+lines.join('\n');
+  const text='Compra de la semana ('+who+')\n\n'+lines.join('\n');
   if(navigator.clipboard&&navigator.clipboard.writeText){
     navigator.clipboard.writeText(text).then(()=>alert('Lista copiada.'),()=>alert(text));
   }else alert(text);
